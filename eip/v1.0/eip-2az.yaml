@@ -1,0 +1,122 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'EIP Template for 2 Availability Zones'
+
+Parameters:
+  Environment:
+    Type: String
+    AllowedValues: [dev, sit, uat, preprod, pvt, prod]
+  ProjectName:
+    Type: String
+  Service:
+    Type: String
+  Module:
+    Type: String
+  ResourcePrefix:
+    Type: String
+  CostCenter:
+    Type: String
+    Default: ITC
+  IaCVersion:
+    Type: String
+    Default: "1.0"
+  CII:
+    Type: String
+    Default: "NO"
+    AllowedValues: ["YES", "NO"]
+  Team:
+    Type: String
+    Default: ITC
+  BU:
+    Type: String
+    Default: ITC
+  ProjectContact:
+    Type: String
+    Default: chalermsak.krourwan@dga.or.th
+    AllowedPattern: '^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+    ConstraintDescription: Must be a valid email address
+
+Resources:
+  EIP1:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourcePrefix}-eip-az1-${Environment}'
+        - Key: Service
+          Value: !Ref Service
+        - Key: Module
+          Value: !Ref Module
+        - Key: AZ
+          Value: 'az1'
+        - Key: ProjectName
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: CostCenter
+          Value: !Ref CostCenter
+        - Key: IaCVersion
+          Value: !Ref IaCVersion
+        - Key: CII
+          Value: !Ref CII
+        - Key: Team
+          Value: !Ref Team
+        - Key: BU
+          Value: !Ref BU
+        - Key: ProjectContact
+          Value: !Ref ProjectContact
+
+  EIP2:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourcePrefix}-eip-az2-${Environment}'
+        - Key: Service
+          Value: !Ref Service
+        - Key: Module
+          Value: !Ref Module
+        - Key: AZ
+          Value: 'az2'
+        - Key: ProjectName
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: CostCenter
+          Value: !Ref CostCenter
+        - Key: IaCVersion
+          Value: !Ref IaCVersion
+        - Key: CII
+          Value: !Ref CII
+        - Key: Team
+          Value: !Ref Team
+        - Key: BU
+          Value: !Ref BU
+        - Key: ProjectContact
+          Value: !Ref ProjectContact
+
+Outputs:
+  EIP1AllocationId:
+    Description: EIP1 Allocation ID
+    Value: !GetAtt EIP1.AllocationId
+    Export:
+      Name: !Sub '${ProjectName}-eip-${Environment}-${Service}-${Module}-EIP1-AllocationId'
+      
+  EIP2AllocationId:
+    Description: EIP2 Allocation ID
+    Value: !GetAtt EIP2.AllocationId
+    Export:
+      Name: !Sub '${ProjectName}-eip-${Environment}-${Service}-${Module}-EIP2-AllocationId'
+      
+  EIP1PublicIp:
+    Description: EIP1 Public IP
+    Value: !Ref EIP1
+    Export:
+      Name: !Sub '${ProjectName}-eip-${Environment}-${Service}-${Module}-EIP1-PublicIp'
+      
+  EIP2PublicIp:
+    Description: EIP2 Public IP
+    Value: !Ref EIP2
+    Export:
+      Name: !Sub '${ProjectName}-eip-${Environment}-${Service}-${Module}-EIP2-PublicIp'
