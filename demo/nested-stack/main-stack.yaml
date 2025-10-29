@@ -1,0 +1,216 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Parent Stack: Demo Nested Stack - Orchestrates Network, Storage, and Security stacks'
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: 'Project Configuration'
+        Parameters:
+          - ProjectName
+          - Environment
+      - Label:
+          default: 'Nested Stack Templates (S3 URLs)'
+        Parameters:
+          - TemplateBucketName
+          - TemplatePrefix
+      - Label:
+          default: 'Network Configuration'
+        Parameters:
+          - VpcCIDR
+      - Label:
+          default: 'Storage Configuration'
+        Parameters:
+          - S3BucketName
+      - Label:
+          default: 'Security Configuration'
+        Parameters:
+          - AllowedCIDR
+
+    ParameterLabels:
+      ProjectName:
+        default: 'Project Name'
+      Environment:
+        default: 'Environment'
+      TemplateBucketName:
+        default: 'S3 Bucket for Templates'
+      TemplatePrefix:
+        default: 'Template Prefix (folder path)'
+      VpcCIDR:
+        default: 'VPC CIDR Block'
+      S3BucketName:
+        default: 'Application S3 Bucket Name (optional)'
+      AllowedCIDR:
+        default: 'Allowed CIDR for Security Groups'
+
+Parameters:
+  ProjectName:
+    Type: String
+    Description: 'Project name for resource naming'
+    Default: 'demo'
+
+  Environment:
+    Type: String
+    Description: 'Environment name'
+    Default: 'dev'
+    AllowedValues:
+      - dev
+      - sit
+      - uat
+      - prod
+
+  TemplateBucketName:
+    Type: String
+    Description: 'S3 bucket name where nested stack templates are stored'
+    Default: 'my-cloudformation-templates'
+
+  TemplatePrefix:
+    Type: String
+    Description: 'S3 key prefix (folder path) for templates (e.g., nested-stack/ or leave empty)'
+    Default: 'demo/nested-stack/'
+
+  VpcCIDR:
+    Type: String
+    Description: 'CIDR block for VPC'
+    Default: '10.0.0.0/16'
+    AllowedPattern: '^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\/([0-9]|[1-2][0-9]|3[0-2]))$'
+
+  S3BucketName:
+    Type: String
+    Description: 'Optional: Custom S3 bucket name for application data (leave empty for auto-generated)'
+    Default: ''
+
+  AllowedCIDR:
+    Type: String
+    Description: 'CIDR block allowed to access web servers'
+    Default: '0.0.0.0/0'
+    AllowedPattern: '^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\/([0-9]|[1-2][0-9]|3[0-2]))$'
+
+Resources:
+  # Nested Stack 1: Network (VPC, Subnets, Internet Gateway, Route Tables)
+  NetworkStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub 'https://${TemplateBucketName}.s3.${AWS::Region}.amazonaws.com/${TemplatePrefix}network-stack.yaml'
+      Parameters:
+        ProjectName: !Ref ProjectName
+        Environment: !Ref Environment
+        VpcCIDR: !Ref VpcCIDR
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-network-stack'
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: StackType
+          Value: 'Nested-Network'
+      TimeoutInMinutes: 10
+
+  # Nested Stack 2: Storage (S3 Bucket)
+  StorageStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub 'https://${TemplateBucketName}.s3.${AWS::Region}.amazonaws.com/${TemplatePrefix}storage-stack.yaml'
+      Parameters:
+        ProjectName: !Ref ProjectName
+        Environment: !Ref Environment
+        BucketName: !Ref S3BucketName
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-storage-stack'
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: StackType
+          Value: 'Nested-Storage'
+      TimeoutInMinutes: 10
+
+  # Nested Stack 3: Security (Security Groups)
+  # This stack depends on NetworkStack because it needs VPC ID
+  SecurityStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: NetworkStack
+    Properties:
+      TemplateURL: !Sub 'https://${TemplateBucketName}.s3.${AWS::Region}.amazonaws.com/${TemplatePrefix}security-stack.yaml'
+      Parameters:
+        ProjectName: !Ref ProjectName
+        Environment: !Ref Environment
+        VpcId: !GetAtt NetworkStack.Outputs.VPCId
+        AllowedCIDR: !Ref AllowedCIDR
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-security-stack'
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: StackType
+          Value: 'Nested-Security'
+      TimeoutInMinutes: 10
+
+Outputs:
+  # Network Outputs
+  VPCId:
+    Description: 'VPC ID from Network Stack'
+    Value: !GetAtt NetworkStack.Outputs.VPCId
+    Export:
+      Name: !Sub '${AWS::StackName}-VPCId'
+
+  PublicSubnetId:
+    Description: 'Public Subnet ID from Network Stack'
+    Value: !GetAtt NetworkStack.Outputs.PublicSubnetId
+    Export:
+      Name: !Sub '${AWS::StackName}-PublicSubnetId'
+
+  PrivateSubnetId:
+    Description: 'Private Subnet ID from Network Stack'
+    Value: !GetAtt NetworkStack.Outputs.PrivateSubnetId
+    Export:
+      Name: !Sub '${AWS::StackName}-PrivateSubnetId'
+
+  # Storage Outputs
+  BucketName:
+    Description: 'S3 Bucket Name from Storage Stack'
+    Value: !GetAtt StorageStack.Outputs.BucketName
+    Export:
+      Name: !Sub '${AWS::StackName}-BucketName'
+
+  BucketArn:
+    Description: 'S3 Bucket ARN from Storage Stack'
+    Value: !GetAtt StorageStack.Outputs.BucketArn
+    Export:
+      Name: !Sub '${AWS::StackName}-BucketArn'
+
+  # Security Outputs
+  WebServerSecurityGroupId:
+    Description: 'Web Server Security Group ID from Security Stack'
+    Value: !GetAtt SecurityStack.Outputs.WebServerSecurityGroupId
+    Export:
+      Name: !Sub '${AWS::StackName}-WebServerSG'
+
+  AppSecurityGroupId:
+    Description: 'Application Security Group ID from Security Stack'
+    Value: !GetAtt SecurityStack.Outputs.AppSecurityGroupId
+    Export:
+      Name: !Sub '${AWS::StackName}-AppSG'
+
+  DatabaseSecurityGroupId:
+    Description: 'Database Security Group ID from Security Stack'
+    Value: !GetAtt SecurityStack.Outputs.DatabaseSecurityGroupId
+    Export:
+      Name: !Sub '${AWS::StackName}-DatabaseSG'
+
+  # Stack Information
+  NetworkStackId:
+    Description: 'Network Stack ID'
+    Value: !Ref NetworkStack
+
+  StorageStackId:
+    Description: 'Storage Stack ID'
+    Value: !Ref StorageStack
+
+  SecurityStackId:
+    Description: 'Security Stack ID'
+    Value: !Ref SecurityStack
