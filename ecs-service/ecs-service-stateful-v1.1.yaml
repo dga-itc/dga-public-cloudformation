@@ -1,0 +1,532 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Generic ECS Service with EFS Storage (Stateful) v1.1 - Added policy parameters'
+
+Metadata:
+  Version: "v1.1"
+  LastUpdated: "2025-01-25"
+  BreakingChanges: "Added policy parameters, updated TG naming"
+  UpgradeFrom: "v1.0"
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "Project Information"
+        Parameters:
+          - ProjectName
+          - Environment
+          - UniqueStackName
+          - CostCenter
+      - Label:
+          default: "Resource Policies"
+        Parameters:
+          - ResourceDeletionPolicy
+          - ResourceUpdateReplacePolicy
+      - Label:
+          default: "Network Configuration"
+        Parameters:
+          - ContainerPort
+          - HealthCheckPath
+          - HealthCheckMatcher
+          - DomainName
+          - PathPattern
+          - ListenerRulePriority
+      - Label:
+          default: "Service Configuration"
+        Parameters:
+          - ContainerName
+          - ContainerImage
+          - ContainerCpu
+          - ContainerMemory
+          - DesiredCount
+          - EFSMountPath
+          - ContainerUser
+      - Label:
+          default: "Stack Dependencies"
+        Parameters:
+          - VPCExportStack
+          - ECSExportStack
+          - ALBExportStack
+          - IAMExportStack
+          - EFSExportStack
+
+Parameters:
+  # Standard Parameters
+  ProjectName:
+    Type: String
+    Description: "Project identifier (Update requires: Replacement - changes resource names)"
+  
+  Environment:
+    Type: String
+    Description: "Environment identifier (Update requires: Replacement - changes resource names)"
+    AllowedValues: ["dev", "sit", "uat", "pvt", "pre-prod", "prod"]
+  
+  UniqueStackName:
+    Type: String
+    Description: "Unique identifier for this stack (Update requires: Replacement - changes resource names)"
+    Default: "ecs-service-stateful"
+  
+  CostCenter:
+    Type: String
+    Description: "Cost center for billing (Update requires: No interruption)"
+    Default: "IT"
+
+  ResourceDeletionPolicy:
+    Type: String
+    Description: "Resource deletion policy on stack deletion (Update requires: No interruption)"
+    AllowedValues: ["Delete", "Retain", "Snapshot"]
+    Default: "Delete"
+  
+  ResourceUpdateReplacePolicy:
+    Type: String
+    Description: "Resource update replacement policy during updates (Update requires: No interruption)"
+    AllowedValues: ["Delete", "Retain", "Snapshot"]
+    Default: "Delete"
+
+  # Stack Dependencies
+  VPCExportStack:
+    Type: String
+    Description: "VPC stack name to import from (Update requires: Some interruption - changes network references)"
+    Default: "lab-iac-prod-main-vpc"
+  
+  ECSExportStack:
+    Type: String
+    Description: "ECS cluster stack name to import from (Update requires: Some interruption - changes cluster reference)"
+    Default: "lab-iac-prod-ecs-cluster"
+  
+  ALBExportStack:
+    Type: String
+    Description: "ALB stack name to import from (Update requires: Some interruption - changes load balancer reference)"
+    Default: "lab-iac-prod-alb"
+  
+  IAMExportStack:
+    Type: String
+    Description: "IAM roles stack name to import from (Update requires: Some interruption - changes role reference)"
+    Default: "lab-iac-prod-iam-roles"
+  
+  EFSExportStack:
+    Type: String
+    Description: "EFS stack name to import from (Update requires: Some interruption - changes storage reference)"
+    Default: "lab-iac-prod-efs"
+
+  # Container Configuration
+  ContainerName:
+    Type: String
+    Description: "Container name (Update requires: Replacement - creates new service)"
+    Default: "app"
+  
+  ContainerImage:
+    Type: String
+    Description: "Container image (Update requires: Some interruption - rolling update)"
+    Default: "nginx:latest"
+  
+  ContainerPort:
+    Type: Number
+    Description: "Container port (Update requires: Replacement - zero downtime with port-based TG naming)"
+    Default: 80
+    MinValue: 1
+    MaxValue: 65535
+  
+  ContainerCpu:
+    Type: Number
+    Description: "Container CPU units (Update requires: No interruption)"
+    Default: 256
+    AllowedValues: [256, 512, 1024, 2048, 4096]
+  
+  ContainerMemory:
+    Type: Number
+    Description: "Container memory (MB) (Update requires: No interruption)"
+    Default: 512
+    AllowedValues: [512, 1024, 2048, 4096, 8192, 16384, 30720]
+
+  # Service Configuration
+  DesiredCount:
+    Type: Number
+    Description: "Desired number of tasks (Update requires: No interruption)"
+    Default: 1
+    MinValue: 0
+    MaxValue: 10
+
+  # EFS Configuration
+  EFSMountPath:
+    Type: String
+    Description: "EFS mount path in container (Update requires: Some interruption - rolling update)"
+    Default: "/app/data"
+  
+  EFSAccessPointPath:
+    Type: String
+    Description: "EFS access point root directory path (Update requires: Replacement - creates new access point)"
+    Default: "/app-data"
+  
+  ContainerUser:
+    Type: String
+    Description: "Container user (UID:GID) (Update requires: Replacement - creates new access point)"
+    Default: "1000"
+
+  # ALB Configuration
+  DomainName:
+    Type: String
+    Description: "Domain name for the service (Update requires: No interruption)"
+    Default: "*"
+  
+  PathPattern:
+    Type: String
+    Description: "Path pattern for ALB listener rule (Update requires: No interruption)"
+    Default: "/*"
+  
+  HealthCheckPath:
+    Type: String
+    Description: "Health check path (Update requires: No interruption)"
+    Default: "/"
+  
+  HealthCheckMatcher:
+    Type: String
+    Description: "HTTP status codes for health check (Update requires: No interruption)"
+    Default: "200"
+  
+  ListenerRulePriority:
+    Type: Number
+    Description: "ALB listener rule priority (Update requires: No interruption)"
+    Default: 100
+    MinValue: 1
+    MaxValue: 50000
+
+  # Environment Variables
+  EnvironmentVariables:
+    Type: CommaDelimitedList
+    Description: "Environment variables (KEY=VALUE format) (Update requires: Some interruption - rolling update)"
+    Default: ""
+
+  # Advanced Configuration
+  LogRetentionDays:
+    Type: Number
+    Description: "CloudWatch log retention in days (Update requires: No interruption)"
+    Default: 7
+    AllowedValues: [1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1827, 3653]
+
+  EFSAccessPointPermissions:
+    Type: String
+    Description: "EFS access point permissions (Update requires: Replacement - creates new access point)"
+    Default: "755"
+
+  HealthCheckInterval:
+    Type: Number
+    Description: "Health check interval in seconds (Update requires: No interruption)"
+    Default: 30
+    MinValue: 5
+    MaxValue: 300
+
+  HealthCheckTimeout:
+    Type: Number
+    Description: "Health check timeout in seconds (Update requires: No interruption)"
+    Default: 5
+    MinValue: 2
+    MaxValue: 120
+
+  HealthyThresholdCount:
+    Type: Number
+    Description: "Healthy threshold count (Update requires: No interruption)"
+    Default: 2
+    MinValue: 2
+    MaxValue: 10
+
+  UnhealthyThresholdCount:
+    Type: Number
+    Description: "Unhealthy threshold count (Update requires: No interruption)"
+    Default: 3
+    MinValue: 2
+    MaxValue: 10
+
+Conditions:
+  HasEnvironmentVariables: !Not [!Equals [!Join ["", !Ref EnvironmentVariables], ""]]
+  HasDomainName: !Not [!Equals [!Ref DomainName, "*"]]
+  ShouldRetainOnDelete: !Equals [!Ref ResourceDeletionPolicy, "Retain"]
+  ShouldSnapshotOnDelete: !Equals [!Ref ResourceDeletionPolicy, "Snapshot"]
+  ShouldRetainOnReplace: !Equals [!Ref ResourceUpdateReplacePolicy, "Retain"]
+  ShouldSnapshotOnReplace: !Equals [!Ref ResourceUpdateReplacePolicy, "Snapshot"]
+
+Mappings:
+  EnvMap:
+    prod: { Short: "Prd" }
+    pre-prod: { Short: "Pprd" }
+    pvt: { Short: "Pvt" }
+    uat: { Short: "Uat" }
+    dev: { Short: "Dev" }
+    sit: { Short: "Sit" }
+
+Resources:
+  # EFS Access Point
+  EFSAccessPoint:
+    Type: AWS::EFS::AccessPoint
+    DeletionPolicy: !If [ShouldRetainOnDelete, Retain, Delete]
+    UpdateReplacePolicy: !If [ShouldRetainOnReplace, Retain, Delete]
+    Properties:
+      FileSystemId: !ImportValue
+        Fn::Sub: '${EFSExportStack}-Id'
+      PosixUser:
+        Uid: !Ref ContainerUser
+        Gid: !Ref ContainerUser
+      RootDirectory:
+        Path: !Ref EFSAccessPointPath
+        CreationInfo:
+          OwnerUid: !Ref ContainerUser
+          OwnerGid: !Ref ContainerUser
+          Permissions: !Ref EFSAccessPointPermissions
+      AccessPointTags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-efs-ap"
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: CostCenter
+          Value: !Ref CostCenter
+
+  # Security Group
+  SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    DeletionPolicy: !If [ShouldRetainOnDelete, Retain, Delete]
+    UpdateReplacePolicy: !If [ShouldRetainOnReplace, Retain, Delete]
+    Properties:
+      GroupName: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-sg"
+      GroupDescription: !Sub "Security group for ${ContainerName} ECS service"
+      VpcId: !ImportValue
+        Fn::Sub: '${VPCExportStack}-Id'
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: !Ref ContainerPort
+          ToPort: !Ref ContainerPort
+          SourceSecurityGroupId: !ImportValue
+            Fn::Sub: '${ALBExportStack}-SecurityGroup-Id'
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 2049
+          ToPort: 2049
+          DestinationSecurityGroupId: !ImportValue
+            Fn::Sub: '${EFSExportStack}-SecurityGroup-Id'
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-sg"
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: CostCenter
+          Value: !Ref CostCenter
+
+  # CloudWatch Log Group
+  LogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: !If [ShouldRetainOnDelete, Retain, Delete]
+    UpdateReplacePolicy: !If [ShouldRetainOnReplace, Retain, Delete]
+    Properties:
+      LogGroupName: !Sub "/ecs/${ProjectName}-${Environment}-${ContainerName}"
+      RetentionInDays: !Ref LogRetentionDays
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-logs"
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: CostCenter
+          Value: !Ref CostCenter
+
+  # ECS Task Definition
+  TaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    DeletionPolicy: !If [ShouldRetainOnDelete, Retain, Delete]
+    UpdateReplacePolicy: !If [ShouldRetainOnReplace, Retain, Delete]
+    Properties:
+      Family: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-${ContainerName}"
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      Cpu: !Ref ContainerCpu
+      Memory: !Ref ContainerMemory
+      ExecutionRoleArn: !ImportValue
+        Fn::Sub: '${IAMExportStack}-TaskExecutionRole-Arn'
+      TaskRoleArn: !ImportValue
+        Fn::Sub: '${IAMExportStack}-TaskRole-Arn'
+      ContainerDefinitions:
+        - Name: !Ref ContainerName
+          Image: !Ref ContainerImage
+          PortMappings:
+            - ContainerPort: !Ref ContainerPort
+              Protocol: tcp
+          Environment: !If
+            - HasEnvironmentVariables
+            - !Split
+              - ","
+              - !Sub
+                - "${inner}"
+                - inner: !Join
+                  - ","
+                  - !Ref EnvironmentVariables
+            - !Ref "AWS::NoValue"
+          MountPoints:
+            - SourceVolume: efs-volume
+              ContainerPath: !Ref EFSMountPath
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref LogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: ecs
+      Volumes:
+        - Name: efs-volume
+          EFSVolumeConfiguration:
+            FilesystemId: !ImportValue
+              Fn::Sub: '${EFSExportStack}-Id'
+            AuthorizationConfig:
+              AccessPointId: !Ref EFSAccessPoint
+            TransitEncryption: ENABLED
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-task-def"
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: CostCenter
+          Value: !Ref CostCenter
+
+  # ALB Target Group
+  TargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    DeletionPolicy: !If [ShouldRetainOnDelete, Retain, Delete]
+    UpdateReplacePolicy: Retain
+    Properties:
+      Name: !Sub
+        - "${ProjectName}${EnvShort}-${ContainerName}${ContainerPort}"
+        - EnvShort: !FindInMap [EnvMap, !Ref Environment, Short]
+      Port: !Ref ContainerPort
+      Protocol: HTTP
+      VpcId: !ImportValue
+        Fn::Sub: '${VPCExportStack}-Id'
+      TargetType: ip
+      HealthCheckPath: !Ref HealthCheckPath
+      HealthCheckProtocol: HTTP
+      HealthCheckIntervalSeconds: !Ref HealthCheckInterval
+      HealthCheckTimeoutSeconds: !Ref HealthCheckTimeout
+      HealthyThresholdCount: !Ref HealthyThresholdCount
+      UnhealthyThresholdCount: !Ref UnhealthyThresholdCount
+      Matcher:
+        HttpCode: !Ref HealthCheckMatcher
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-tg"
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: CostCenter
+          Value: !Ref CostCenter
+
+  # ALB Listener Rule
+  ListenerRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    DeletionPolicy: !If [ShouldRetainOnDelete, Retain, Delete]
+    UpdateReplacePolicy: !If [ShouldRetainOnReplace, Retain, Delete]
+    Properties:
+      ListenerArn: !ImportValue
+        Fn::Sub: '${ALBExportStack}-HTTPSListener-Arn'
+      Priority: !Ref ListenerRulePriority
+      Conditions: !If
+        - HasDomainName
+        - - Field: host-header
+            Values:
+              - !Ref DomainName
+          - Field: path-pattern
+            Values:
+              - !Ref PathPattern
+        - - Field: path-pattern
+            Values:
+              - !Ref PathPattern
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref TargetGroup
+
+  # ECS Service
+  ECSService:
+    Type: AWS::ECS::Service
+    DependsOn: ListenerRule
+    DeletionPolicy: !If [ShouldRetainOnDelete, Retain, Delete]
+    UpdateReplacePolicy: !If [ShouldRetainOnReplace, Retain, Delete]
+    Properties:
+      ServiceName: !Sub "${ProjectName}-${Environment}-${ContainerName}"
+      Cluster: !ImportValue
+        Fn::Sub: '${ECSExportStack}-Name'
+      TaskDefinition: !Ref TaskDefinition
+      LaunchType: FARGATE
+      DesiredCount: !Ref DesiredCount
+      EnableExecuteCommand: true
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          SecurityGroups:
+            - !Ref SecurityGroup
+            - !ImportValue
+                Fn::Sub: '${EFSExportStack}-SecurityGroup-Id'
+          Subnets:
+            - !ImportValue
+                Fn::Sub: '${VPCExportStack}-ContainerSubnet1-Id'
+            - !ImportValue
+                Fn::Sub: '${VPCExportStack}-ContainerSubnet2-Id'
+      LoadBalancers:
+        - ContainerName: !Ref ContainerName
+          ContainerPort: !Ref ContainerPort
+          TargetGroupArn: !Ref TargetGroup
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-service"
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: CostCenter
+          Value: !Ref CostCenter
+
+Outputs:
+  ServiceName:
+    Description: ECS Service Name
+    Value: !Ref ECSService
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-${UniqueStackName}-Service-Name'
+  
+  ServiceArn:
+    Description: ECS Service ARN
+    Value: !Ref ECSService
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-${UniqueStackName}-Service-Arn'
+  
+  TargetGroupArn:
+    Description: Target Group ARN
+    Value: !Ref TargetGroup
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-${UniqueStackName}-TargetGroup-Arn'
+  
+  SecurityGroupId:
+    Description: Security Group ID
+    Value: !Ref SecurityGroup
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-${UniqueStackName}-SecurityGroup-Id'
+  
+  EFSAccessPointId:
+    Description: EFS Access Point ID
+    Value: !Ref EFSAccessPoint
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-${UniqueStackName}-AccessPoint-Id'
+
+  StackName:
+    Description: "Stack Name for cross-stack references"
+    Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}"
+    Export:
+      Name: !Sub
+        - "${ProjectName}${EnvShort}-${UniqueStackName}"
+        - EnvShort: !FindInMap [EnvMap, !Ref Environment, Short]

@@ -1,0 +1,322 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'ElastiCache Serverless Module v1.0 - Redis or Memcached Serverless Cache'
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "Project Information"
+        Parameters:
+          - ProjectName
+          - Environment
+          - UniqueStackName
+          - CostCenter
+      - Label:
+          default: "Network Configuration"
+        Parameters:
+          - VPCExportStack
+          - VPCImportMode
+          - VpcId
+          - SecondaryCidr
+          - DatabaseSubnetId1
+          - DatabaseSubnetId2
+          - DatabaseSubnetId3
+      - Label:
+          default: "Cache Configuration"
+        Parameters:
+          - CacheName
+          - Engine
+          - MajorEngineVersion
+          - Description
+      - Label:
+          default: "Performance & Capacity"
+        Parameters:
+          - MaxDataStorage
+          - MaxECPUPerSecond
+      - Label:
+          default: "Backup & Maintenance"
+        Parameters:
+          - SnapshotRetentionLimit
+          - DailySnapshotTime
+    ParameterLabels:
+      ProjectName:
+        default: "Project Name"
+      Environment:
+        default: "Environment"
+      UniqueStackName:
+        default: "Stack Identifier"
+      CostCenter:
+        default: "Cost Center"
+      VPCExportStack:
+        default: "VPC Export Stack Name"
+      VPCImportMode:
+        default: "VPC Import Mode"
+      VpcId:
+        default: "VPC ID (Manual Mode)"
+      SecondaryCidr:
+        default: "Secondary CIDR Block"
+      DatabaseSubnetId1:
+        default: "Database Subnet 1 ID"
+      DatabaseSubnetId2:
+        default: "Database Subnet 2 ID"
+      DatabaseSubnetId3:
+        default: "Database Subnet 3 ID"
+      CacheName:
+        default: "Cache Name"
+      Engine:
+        default: "Cache Engine"
+      MajorEngineVersion:
+        default: "Engine Version"
+      Description:
+        default: "Cache Description"
+      MaxDataStorage:
+        default: "Maximum Data Storage (GB)"
+      MaxECPUPerSecond:
+        default: "Maximum ECPUs per Second"
+      SnapshotRetentionLimit:
+        default: "Snapshot Retention (Days)"
+      DailySnapshotTime:
+        default: "Daily Snapshot Time (UTC)"
+
+Parameters:
+  # Core Parameters
+  ProjectName:
+    Type: String
+    Description: "Project identifier"
+  
+  Environment:
+    Type: String
+    Description: "Environment identifier"
+    AllowedValues: ["dev", "sit", "uat", "pvt", "pre-prod", "prod"]
+  
+  UniqueStackName:
+    Type: String
+    Description: "Unique identifier for this stack"
+    Default: "elasticache"
+  
+  # Stack Dependencies
+  VPCExportStack:
+    Type: String
+    Description: "VPC stack name to import from"
+    Default: "lab-iac-prod-main-vpc"
+
+  # Network Configuration
+  VpcCidr:
+    Type: String
+    Description: "Main VPC CIDR block"
+    Default: "10.0.0.0/16"
+
+  SecondaryCidr:
+    Type: String
+    Description: "Secondary VPC CIDR block for container subnets"
+    Default: "100.64.0.0/16"
+
+  # Cache Configuration
+  Engine:
+    Type: String
+    Description: "Cache engine type"
+    Default: "redis"
+    AllowedValues:
+      - "redis"
+      - "memcached"
+
+  CacheName:
+    Type: String
+    Description: "Name for the serverless cache"
+    MinLength: 1
+    MaxLength: 40
+
+  MajorEngineVersion:
+    Type: String
+    Description: "Major engine version (e.g., '7' for Redis 7.x)"
+    Default: "7"
+
+  # Cache Configuration
+  Description:
+    Type: String
+    Description: "Description for the serverless cache"
+    Default: "ElastiCache Serverless cache"
+
+  MaxDataStorage:
+    Type: Number
+    Description: "Maximum data storage in GB"
+    Default: 1
+    MinValue: 1
+    MaxValue: 5000
+
+  MaxECPUPerSecond:
+    Type: Number
+    Description: "Maximum ECPUs per second"
+    Default: 1000
+    MinValue: 1000
+    MaxValue: 15000000
+
+  SnapshotRetentionLimit:
+    Type: Number
+    Description: "Snapshot retention period in days"
+    Default: 1
+    MinValue: 0
+    MaxValue: 35
+
+  DailySnapshotTime:
+    Type: String
+    Description: "Daily snapshot time (HH:MM format, UTC)"
+    Default: "03:00"
+
+  # VPC Import Mode
+  VPCImportMode:
+    Type: String
+    Description: "How to get VPC and Subnet IDs"
+    AllowedValues:
+      - "AUTO"
+      - "MANUAL"
+    Default: "AUTO"
+
+  VpcId:
+    Type: String
+    Description: "VPC ID (only if VPCImportMode=MANUAL)"
+    Default: ""
+
+  DatabaseSubnetId1:
+    Type: String
+    Description: "Database Subnet 1 ID (only if VPCImportMode=MANUAL)"
+    Default: ""
+
+  DatabaseSubnetId2:
+    Type: String
+    Description: "Database Subnet 2 ID (only if VPCImportMode=MANUAL)"
+    Default: ""
+
+  DatabaseSubnetId3:
+    Type: String
+    Description: "Database Subnet 3 ID (only if VPCImportMode=MANUAL)"
+    Default: ""
+
+  CostCenter:
+    Type: String
+    Description: "Cost center for billing"
+    Default: "IT"
+
+Conditions:
+  UseManualVPC: !Equals [!Ref VPCImportMode, "MANUAL"]
+  IsRedis: !Equals [!Ref Engine, "redis"]
+
+Resources:
+  # ElastiCache Security Group
+  CacheSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-sg"
+      GroupDescription: !Sub "Security group for ${CacheName} ElastiCache Serverless"
+      VpcId: !If
+        - UseManualVPC
+        - !Ref VpcId
+        - !ImportValue 
+            Fn::Sub: '${VPCExportStack}-Id'
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: !If [IsRedis, 6379, 11211]
+          ToPort: !If [IsRedis, 6379, 11211]
+          CidrIp: !Ref VpcCidr
+          Description: !Sub "Allow ${Engine} access from main VPC CIDR"
+        - IpProtocol: tcp
+          FromPort: !If [IsRedis, 6379, 11211]
+          ToPort: !If [IsRedis, 6379, 11211]
+          CidrIp: !Ref SecondaryCidr
+          Description: !Sub "Allow ${Engine} access from container subnets"
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-sg"
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: CostCenter
+          Value: !Ref CostCenter
+
+  # Client Security Group (attach to resources that need cache access)
+  CacheClientSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-client-sg"
+      GroupDescription: Security group for ElastiCache clients (attach to EC2/ECS/Lambda)
+      VpcId: !If
+        - UseManualVPC
+        - !Ref VpcId
+        - !ImportValue 
+            Fn::Sub: '${VPCExportStack}-Id'
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-client-sg"
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: CostCenter
+          Value: !Ref CostCenter
+
+  # ElastiCache Serverless Cache
+  ServerlessCache:
+    Type: AWS::ElastiCache::ServerlessCache
+    Properties:
+      ServerlessCacheName: !Ref CacheName
+      Engine: !Ref Engine
+      MajorEngineVersion: !Ref MajorEngineVersion
+      Description: !Ref Description
+      CacheUsageLimits:
+        ECPUPerSecond:
+          Maximum: !Ref MaxECPUPerSecond
+        DataStorage:
+          Maximum: !Ref MaxDataStorage
+          Unit: GB
+      SecurityGroupIds:
+        - !Ref CacheSecurityGroup
+      SubnetIds:
+        - !If
+          - UseManualVPC
+          - !Ref DatabaseSubnetId1
+          - !ImportValue 
+              Fn::Sub: '${VPCExportStack}-DatabaseSubnet1-Id'
+        - !If
+          - UseManualVPC
+          - !Ref DatabaseSubnetId2
+          - !ImportValue 
+              Fn::Sub: '${VPCExportStack}-DatabaseSubnet2-Id'
+        - !If
+          - UseManualVPC
+          - !Ref DatabaseSubnetId3
+          - !ImportValue 
+              Fn::Sub: '${VPCExportStack}-DatabaseSubnet3-Id'
+      SnapshotRetentionLimit: !Ref SnapshotRetentionLimit
+      DailySnapshotTime: !Ref DailySnapshotTime
+
+Outputs:
+  CacheEndpoint:
+    Description: ElastiCache Serverless endpoint
+    Value: !GetAtt ServerlessCache.Endpoint.Address
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-${UniqueStackName}-Endpoint'
+
+  CachePort:
+    Description: ElastiCache port
+    Value: !GetAtt ServerlessCache.Endpoint.Port
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-${UniqueStackName}-Port'
+
+  CacheSecurityGroupId:
+    Description: Cache Security Group ID
+    Value: !Ref CacheSecurityGroup
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-${UniqueStackName}-SecurityGroup-Id'
+
+  ClientSecurityGroupId:
+    Description: Client Security Group ID (attach to resources needing cache access)
+    Value: !Ref CacheClientSecurityGroup
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-${UniqueStackName}-ClientSecurityGroup-Id'
+
+  StackName:
+    Description: "Stack Name for cross-stack references"
+    Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}"
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-${UniqueStackName}"

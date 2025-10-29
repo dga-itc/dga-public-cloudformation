@@ -1,0 +1,353 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Network Load Balancer to ALB Stack v1.1 - Added policy parameters'
+
+Metadata:
+  Version: "v1.1"
+  LastUpdated: "2025-01-25"
+  BreakingChanges: "Added policy parameters, updated TG naming"
+  UpgradeFrom: "v1.0"
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "Project Information"
+        Parameters:
+          - ProjectName
+          - Environment
+          - UniqueStackName
+          - CostCenter
+      - Label:
+          default: "Resource Policies"
+        Parameters:
+          - ResourceDeletionPolicy
+          - ResourceUpdateReplacePolicy
+      - Label:
+          default: "Service Configuration"
+        Parameters:
+          - LoadBalancerScheme
+          - LoadBalancerType
+      - Label:
+          default: "Stack Dependencies"
+        Parameters:
+          - VPCExportStack
+          - ALBExportStack
+          - EIPExportStack
+      - Label:
+          default: "Import Configuration"
+        Parameters:
+          - VPCImportMode
+          - VpcId
+          - PublicSubnetId1
+          - PublicSubnetId2
+          - NLBEIPAllocationId1
+          - NLBEIPAllocationId2
+          - ALBTargetGroupArn
+    ParameterLabels:
+      ProjectName:
+        default: "Project Name"
+      Environment:
+        default: "Environment"
+      UniqueStackName:
+        default: "Stack Unique Name"
+      CostCenter:
+        default: "Cost Center"
+      ResourceDeletionPolicy:
+        default: "Resource Deletion Policy"
+      ResourceUpdateReplacePolicy:
+        default: "Resource Update Replace Policy"
+      LoadBalancerScheme:
+        default: "Load Balancer Scheme"
+      VPCExportStack:
+        default: "VPC Export Stack Name"
+      ALBExportStack:
+        default: "ALB Export Stack Name"
+      EIPExportStack:
+        default: "EIP Export Stack Name"
+      VPCImportMode:
+        default: "VPC Import Mode"
+
+Parameters:
+  ProjectName:
+    Type: String
+    Description: "Project identifier (Update requires: Replacement - changes resource names)"
+  
+  Environment:
+    Type: String
+    Description: "Environment identifier (Update requires: Replacement - changes resource names)"
+    AllowedValues: ["dev", "sit", "uat", "pvt", "pre-prod", "prod"]
+  
+  UniqueStackName:
+    Type: String
+    Description: "Unique identifier for this stack (Update requires: Replacement - changes resource names)"
+    Default: "public-nlb"
+  
+  CostCenter:
+    Type: String
+    Description: "Cost center for billing (Update requires: No interruption)"
+    Default: "IT"
+
+  ResourceDeletionPolicy:
+    Type: String
+    Description: "Resource deletion policy on stack deletion (Update requires: No interruption)"
+    AllowedValues: ["Delete", "Retain", "Snapshot"]
+    Default: "Delete"
+  
+  ResourceUpdateReplacePolicy:
+    Type: String
+    Description: "Resource update replacement policy during updates (Update requires: No interruption)"
+    AllowedValues: ["Delete", "Retain", "Snapshot"]
+    Default: "Delete"
+  
+  VPCExportStack:
+    Type: String
+    Description: "VPC stack name to import from (Update requires: Some interruption - changes network references)"
+    Default: "lab-iac-prod-main-vpc"
+  
+  EIPExportStack:
+    Type: String
+    Description: "EIP stack name to import from (Update requires: Replacement - changes EIP allocation)"
+    Default: "lab-iac-prod-eip-nlb"
+  
+  ALBExportStack:
+    Type: String
+    Description: "ALB stack name to import from (Update requires: Replacement - changes target)"
+    Default: "lab-iac-prod-alb"
+  
+  VPCImportMode:
+    Type: String
+    Description: "How to get VPC and Subnet IDs (Update requires: Some interruption - changes network references)"
+    AllowedValues: ["AUTO", "MANUAL"]
+    Default: "AUTO"
+  
+  VpcId:
+    Type: String
+    Description: "VPC ID (only if VPCImportMode=MANUAL) (Update requires: Replacement - creates new NLB)"
+    Default: ""
+  
+  PublicSubnetId1:
+    Type: String
+    Description: "Public Subnet 1 ID (only if VPCImportMode=MANUAL) (Update requires: Replacement - creates new NLB)"
+    Default: ""
+  
+  PublicSubnetId2:
+    Type: String
+    Description: "Public Subnet 2 ID (only if VPCImportMode=MANUAL) (Update requires: Replacement - creates new NLB)"
+    Default: ""
+  
+  EIPImportMode:
+    Type: String
+    Description: "How to get EIP Allocation IDs (Update requires: Replacement - changes EIP allocation)"
+    AllowedValues: ["AUTO", "MANUAL"]
+    Default: "AUTO"
+  
+  NLBEIPAllocationId1:
+    Type: String
+    Description: "EIP 1 Allocation ID (only if EIPImportMode=MANUAL) (Update requires: Replacement - changes EIP allocation)"
+    Default: ""
+  
+  NLBEIPAllocationId2:
+    Type: String
+    Description: "EIP 2 Allocation ID (only if EIPImportMode=MANUAL) (Update requires: Replacement - changes EIP allocation)"
+    Default: ""
+
+Conditions:
+  UseManualVPC: !Equals [!Ref VPCImportMode, "MANUAL"]
+  UseManualEIP: !Equals [!Ref EIPImportMode, "MANUAL"]
+  ShouldRetainOnDelete: !Equals [!Ref ResourceDeletionPolicy, "Retain"]
+  ShouldSnapshotOnDelete: !Equals [!Ref ResourceDeletionPolicy, "Snapshot"]
+  ShouldRetainOnReplace: !Equals [!Ref ResourceUpdateReplacePolicy, "Retain"]
+  ShouldSnapshotOnReplace: !Equals [!Ref ResourceUpdateReplacePolicy, "Snapshot"]
+
+Mappings:
+  EnvMap:
+    prod: { Short: "Prd" }
+    pre-prod: { Short: "Pprd" }
+    pvt: { Short: "Pvt" }
+    uat: { Short: "Uat" }
+    dev: { Short: "Dev" }
+    sit: { Short: "Sit" }
+
+Resources:
+  NLBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    DeletionPolicy: !If [ShouldRetainOnDelete, Retain, Delete]
+    UpdateReplacePolicy: !If [ShouldRetainOnReplace, Retain, Delete]
+    Properties:
+      GroupName: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-sg"
+      GroupDescription: Security group for Network Load Balancer
+      VpcId: !If
+        - UseManualVPC
+        - !Ref VpcId
+        - !ImportValue 
+            Fn::Sub: '${VPCExportStack}-Id'
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-sg"
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: CostCenter
+          Value: !Ref CostCenter
+
+  NetworkLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    DeletionPolicy: !If [ShouldRetainOnDelete, Retain, Delete]
+    UpdateReplacePolicy: !If [ShouldRetainOnReplace, Retain, Delete]
+    Properties:
+      Name: !Sub
+        - "${ProjectName}${EnvShort}-${UniqueStackName}"
+        - EnvShort: !FindInMap [EnvMap, !Ref Environment, Short]
+      Type: network
+      Scheme: internet-facing
+      SecurityGroups:
+        - !Ref NLBSecurityGroup
+      SubnetMappings:
+        - SubnetId: !If
+            - UseManualVPC
+            - !Ref PublicSubnetId1
+            - !ImportValue 
+                Fn::Sub: '${VPCExportStack}-PublicSubnet1-Id'
+          AllocationId: !If
+            - UseManualEIP
+            - !Ref NLBEIPAllocationId1
+            - !ImportValue 
+                Fn::Sub: '${EIPExportStack}-EIP1-AllocationId'
+        - SubnetId: !If
+            - UseManualVPC
+            - !Ref PublicSubnetId2
+            - !ImportValue 
+                Fn::Sub: '${VPCExportStack}-PublicSubnet2-Id'
+          AllocationId: !If
+            - UseManualEIP
+            - !Ref NLBEIPAllocationId2
+            - !ImportValue 
+                Fn::Sub: '${EIPExportStack}-EIP2-AllocationId'
+
+  NLBTargetGroupHTTP:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    DependsOn: NetworkLoadBalancer
+    DeletionPolicy: !If [ShouldRetainOnDelete, Retain, Delete]
+    UpdateReplacePolicy: Retain
+    Properties:
+      Name: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-tg-80"
+      Port: 80
+      Protocol: TCP
+      TargetType: alb
+      VpcId: !If
+        - UseManualVPC
+        - !Ref VpcId
+        - !ImportValue 
+            Fn::Sub: '${VPCExportStack}-Id'
+      Targets:
+        - Id: !ImportValue 
+            Fn::Sub: '${ALBExportStack}-Arn'
+      HealthCheckEnabled: true
+      HealthCheckProtocol: HTTP
+      HealthCheckPath: /
+
+  NLBTargetGroupHTTPS:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    DependsOn: NetworkLoadBalancer
+    DeletionPolicy: !If [ShouldRetainOnDelete, Retain, Delete]
+    UpdateReplacePolicy: Retain
+    Properties:
+      Name: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-tg-443"
+      Port: 443
+      Protocol: TCP
+      TargetType: alb
+      VpcId: !If
+        - UseManualVPC
+        - !Ref VpcId
+        - !ImportValue 
+            Fn::Sub: '${VPCExportStack}-Id'
+      Targets:
+        - Id: !ImportValue 
+            Fn::Sub: '${ALBExportStack}-Arn'
+      HealthCheckEnabled: true
+      HealthCheckProtocol: HTTPS
+      HealthCheckPath: /
+
+  NLBListener80:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    DeletionPolicy: !If [ShouldRetainOnDelete, Retain, Delete]
+    UpdateReplacePolicy: !If [ShouldRetainOnReplace, Retain, Delete]
+    Properties:
+      LoadBalancerArn: !Ref NetworkLoadBalancer
+      Port: 80
+      Protocol: TCP
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref NLBTargetGroupHTTP
+
+  NLBListener443:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    DeletionPolicy: !If [ShouldRetainOnDelete, Retain, Delete]
+    UpdateReplacePolicy: !If [ShouldRetainOnReplace, Retain, Delete]
+    Properties:
+      LoadBalancerArn: !Ref NetworkLoadBalancer
+      Port: 443
+      Protocol: TCP
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref NLBTargetGroupHTTPS
+
+  # Update ALB Security Group to allow NLB
+  ALBSecurityGroupIngressHTTP:
+    Type: AWS::EC2::SecurityGroupIngress
+    DeletionPolicy: !If [ShouldRetainOnDelete, Retain, Delete]
+    UpdateReplacePolicy: !If [ShouldRetainOnReplace, Retain, Delete]
+    Properties:
+      GroupId: !ImportValue 
+        Fn::Sub: '${ALBExportStack}-SecurityGroup-Id'
+      IpProtocol: tcp
+      FromPort: 80
+      ToPort: 80
+      SourceSecurityGroupId: !Ref NLBSecurityGroup
+
+  ALBSecurityGroupIngressHTTPS:
+    Type: AWS::EC2::SecurityGroupIngress
+    DeletionPolicy: !If [ShouldRetainOnDelete, Retain, Delete]
+    UpdateReplacePolicy: !If [ShouldRetainOnReplace, Retain, Delete]
+    Properties:
+      GroupId: !ImportValue 
+        Fn::Sub: '${ALBExportStack}-SecurityGroup-Id'
+      IpProtocol: tcp
+      FromPort: 443
+      ToPort: 443
+      SourceSecurityGroupId: !Ref NLBSecurityGroup
+
+Outputs:
+  NLBArn:
+    Description: Network Load Balancer ARN
+    Value: !Ref NetworkLoadBalancer
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-${UniqueStackName}-Arn'
+
+  NLBDNSName:
+    Description: Network Load Balancer DNS Name
+    Value: !GetAtt NetworkLoadBalancer.DNSName
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-${UniqueStackName}-DNSName'
+
+  NLBZoneId:
+    Description: Network Load Balancer Hosted Zone ID
+    Value: !GetAtt NetworkLoadBalancer.CanonicalHostedZoneID
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-${UniqueStackName}-ZoneId'
+
+  StackName:
+    Description: "Stack Name for cross-stack references"
+    Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}"
+    Export:
+      Name: !Sub
+        - "${ProjectName}${EnvShort}-${UniqueStackName}"
+        - EnvShort: !FindInMap [EnvMap, !Ref Environment, Short]

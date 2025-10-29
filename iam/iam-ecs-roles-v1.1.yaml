@@ -1,0 +1,217 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'IAM Roles for ECS Tasks Module v1.0'
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "Project Information"
+        Parameters:
+          - ProjectName
+          - Environment
+          - UniqueStackName
+          - CostCenter
+      - Label:
+          default: "Resource Policies"
+        Parameters:
+          - ResourceDeletionPolicy
+          - ResourceUpdateReplacePolicy
+      - Label:
+          default: "ECS Task Execution Role"
+        Parameters:
+          - TaskExecutionRoleName
+      - Label:
+          default: "ECS Task Role Configuration"
+        Parameters:
+          - TaskRoleName
+          - EnableS3Access
+          - EnableSQSAccess
+          - EnableSecretsManagerAccess
+          - EnableParameterStoreAccess
+    ParameterLabels:
+      ProjectName:
+        default: "Project Name"
+      Environment:
+        default: "Environment"
+      UniqueStackName:
+        default: "Stack Identifier"
+      CostCenter:
+        default: "Cost Center"
+      ResourceDeletionPolicy:
+        default: "Resource Deletion Policy"
+      ResourceUpdateReplacePolicy:
+        default: "Resource Update Replace Policy"
+      TaskExecutionRoleName:
+        default: "ECS Task Execution Role Name"
+      TaskRoleName:
+        default: "ECS Task Role Name"
+      EnableS3Access:
+        default: "Enable S3 Access"
+      EnableSQSAccess:
+        default: "Enable SQS Access"
+      EnableSecretsManagerAccess:
+        default: "Enable Secrets Manager Access"
+      EnableParameterStoreAccess:
+        default: "Enable Parameter Store Access"
+
+Parameters:
+  # Core Parameters
+  ProjectName:
+    Type: String
+    Description: "Project identifier"
+  
+  Environment:
+    Type: String
+    Description: "Environment identifier"
+    AllowedValues: ["dev", "sit", "uat", "pvt", "pre-prod", "prod"]
+  
+  UniqueStackName:
+    Type: String
+    Description: "Unique identifier for this stack"
+    Default: "iam-ecs-roles"
+
+  CostCenter:
+    Type: String
+    Description: "Cost center for billing"
+    Default: "IT"
+  ResourceDeletionPolicy:
+    Type: String
+    Description: "Resource deletion policy on stack deletion (Update requires: No interruption)"
+    AllowedValues: ["Delete", "Retain", "Snapshot"]
+    Default: "Delete"
+  
+  ResourceUpdateReplacePolicy:
+    Type: String
+    Description: "Resource update replacement policy during updates (Update requires: No interruption)"
+    AllowedValues: ["Delete", "Retain", "Snapshot"]
+    Default: "Delete"
+
+
+  # Optional Tags
+
+Conditions:
+  ShouldRetainOnDelete: !Equals [!Ref ResourceDeletionPolicy, "Retain"]
+  ShouldSnapshotOnDelete: !Equals [!Ref ResourceDeletionPolicy, "Snapshot"]
+  ShouldRetainOnReplace: !Equals [!Ref ResourceUpdateReplacePolicy, "Retain"]
+  ShouldSnapshotOnReplace: !Equals [!Ref ResourceUpdateReplacePolicy, "Snapshot"]
+
+Resources:
+  # ECS Task Execution Role (for pulling images, writing logs)
+  TaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-execution-role"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+      Policies:
+        - PolicyName: ECSTaskExecutionPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ecr:GetAuthorizationToken
+                  - ecr:BatchCheckLayerAvailability
+                  - ecr:GetDownloadUrlForLayer
+                  - ecr:BatchGetImage
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                  - logs:CreateLogGroup
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                  - ssm:GetParameters
+                  - kms:Decrypt
+                Resource: '*'
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-execution-role"
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: CostCenter
+          Value: !Ref CostCenter
+
+  # ECS Task Role (for application permissions)
+  TaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-task-role"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: ECSTaskPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:ListBucket
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - elasticache:DescribeCacheClusters
+                  - elasticache:DescribeReplicationGroups
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - ssmmessages:CreateControlChannel
+                  - ssmmessages:CreateDataChannel
+                  - ssmmessages:OpenControlChannel
+                  - ssmmessages:OpenDataChannel
+                Resource: '*'
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-task-role"
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: CostCenter
+          Value: !Ref CostCenter
+
+Outputs:
+  TaskExecutionRoleArn:
+    Description: ECS Task Execution Role ARN
+    Value: !GetAtt TaskExecutionRole.Arn
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-${UniqueStackName}-TaskExecutionRole-Arn'
+
+  TaskRoleArn:
+    Description: ECS Task Role ARN
+    Value: !GetAtt TaskRole.Arn
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-${UniqueStackName}-TaskRole-Arn'
+
+  TaskExecutionRoleName:
+    Description: ECS Task Execution Role Name
+    Value: !Ref TaskExecutionRole
+
+  TaskRoleName:
+    Description: ECS Task Role Name
+    Value: !Ref TaskRole
+
+  StackName:
+    Description: "Stack Name for cross-stack references"
+    Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}"
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-${UniqueStackName}"

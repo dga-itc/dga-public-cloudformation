@@ -1,0 +1,118 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Route53 Alias Record Module v1.0 - Creates DNS Alias Record pointing to Load Balancer'
+
+Parameters:
+  # Core Parameters
+  ProjectName:
+    Type: String
+    Description: "Project identifier"
+  
+  Environment:
+    Type: String
+    Description: "Environment identifier"
+    AllowedValues: ["dev", "sit", "uat", "pvt", "pre-prod", "prod"]
+  
+  UniqueStackName:
+    Type: String
+    Description: "Unique identifier for this stack"
+    Default: "route53-alias"
+
+  # DNS Configuration
+  HostedZoneId:
+    Type: String
+    Description: "Route53 Hosted Zone ID"
+
+  HostedZoneName:
+    Type: String
+    Description: "Hosted Zone name (e.g., example.com)"
+    AllowedPattern: "^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$"
+
+  RecordName:
+    Type: String
+    Description: "Full DNS record name (e.g., app.example.com)"
+    AllowedPattern: "^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$"
+
+  # Target Load Balancer Configuration
+  TargetType:
+    Type: String
+    Description: "Type of load balancer target"
+    AllowedValues:
+      - "NLB"
+      - "ALB"
+    Default: "NLB"
+
+  # Stack Dependencies (Optional - use either these OR manual values)
+  LoadBalancerExportStack:
+    Type: String
+    Description: "Load Balancer stack name to import from (optional)"
+    Default: ""
+
+  # Manual Target Configuration (use if not importing from stack)
+  TargetDNSName:
+    Type: String
+    Description: "Load Balancer DNS name (e.g., xxx.elb.amazonaws.com) - only if not importing"
+    Default: ""
+
+  TargetHostedZoneId:
+    Type: String
+    Description: "Load Balancer Hosted Zone ID - only if not importing"
+    Default: ""
+
+  CostCenter:
+    Type: String
+    Description: "Cost center for billing"
+    Default: "IT"
+
+Conditions:
+  UseStackImport: !Not [!Equals [!Ref LoadBalancerExportStack, ""]]
+  UseManualTarget: !Equals [!Ref LoadBalancerExportStack, ""]
+
+Resources:
+  # Route53 Alias Record
+  DNSRecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneName: !Sub "${HostedZoneName}."
+      Name: !Sub "${RecordName}."
+      Type: A
+      AliasTarget:
+        DNSName: !If
+          - UseStackImport
+          - !ImportValue
+              Fn::Sub: '${LoadBalancerExportStack}-DNSName'
+          - !Ref TargetDNSName
+        HostedZoneId: !If
+          - UseStackImport
+          - !ImportValue
+              Fn::Sub: '${LoadBalancerExportStack}-ZoneId'
+          - !Ref TargetHostedZoneId
+        EvaluateTargetHealth: true
+
+Outputs:
+  RecordName:
+    Description: Created DNS Record Name
+    Value: !Ref DNSRecord
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-${UniqueStackName}-RecordName'
+
+  RecordType:
+    Description: DNS Record Type
+    Value: A
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-${UniqueStackName}-RecordType'
+
+  TargetDNSName:
+    Description: Target Load Balancer DNS Name
+    Value: !If
+      - UseStackImport
+      - !ImportValue
+          Fn::Sub: '${LoadBalancerExportStack}-DNSName'
+      - !Ref TargetDNSName
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-${UniqueStackName}-TargetDNSName'
+
+  StackName:
+    Description: "Stack Name for cross-stack references"
+    Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}"
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-${UniqueStackName}"

@@ -1,0 +1,235 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'REST API Gateway with VPC Link Integration'
+
+Parameters:
+  ProjectName:
+    Type: String
+    Description: "Project identifier"
+  
+  Environment:
+    Type: String
+    Description: "Environment identifier"
+    AllowedValues: ["dev", "sit", "uat", "pvt", "pre-prod", "prod"]
+  
+  UniqueStackName:
+    Type: String
+    Description: "Unique identifier for this stack"
+    Default: "apigw-rest-vpclink"
+
+  # Stack Dependencies
+  VPCLinkExportStack:
+    Type: String
+    Description: "VPC Link stack name to import from"
+    Default: "lab-iac-prod-apigw-vpc-link"
+
+  NLBExportStack:
+    Type: String
+    Description: "NLB stack name to import from"
+    Default: "lab-iac-prod-nlb-private"
+
+  # API Configuration
+  ApiName:
+    Type: String
+    Description: "API Gateway name"
+    Default: ""
+
+  StageName:
+    Type: String
+    Description: "API Gateway stage name"
+    Default: "dev"
+
+  # Required Tags
+  CostCenter:
+    Type: String
+    Description: "Cost center for billing"
+
+Conditions:
+  UseDefaultApiName: !Equals [!Ref ApiName, ""]
+
+Resources:
+  # REST API Gateway
+  RestApi:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: !If
+        - UseDefaultApiName
+        - !Sub "${ProjectName}-${Environment}-${UniqueStackName}"
+        - !Ref ApiName
+      Description: !Sub "REST API with VPC Link for ${ProjectName} ${Environment}"
+      EndpointConfiguration:
+        Types:
+          - REGIONAL
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}"
+
+  # Proxy Resource (catch-all)
+  ProxyResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref RestApi
+      ParentId: !GetAtt RestApi.RootResourceId
+      PathPart: "{proxy+}"
+
+  # Root ANY Method
+  RootAnyMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref RestApi
+      ResourceId: !GetAtt RestApi.RootResourceId
+      HttpMethod: ANY
+      AuthorizationType: NONE
+      Integration:
+        Type: HTTP_PROXY
+        ConnectionType: VPC_LINK
+        ConnectionId: !ImportValue
+          Fn::Sub: '${VPCLinkExportStack}-Id'
+        IntegrationHttpMethod: ANY
+        Uri: !Sub 
+          - "http://${NLBDNSName}/"
+          - NLBDNSName: !ImportValue
+              Fn::Sub: '${NLBExportStack}-DNSName'
+        IntegrationResponses:
+          - StatusCode: 200
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: false
+
+  # Proxy ANY Method
+  ProxyAnyMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref RestApi
+      ResourceId: !Ref ProxyResource
+      HttpMethod: ANY
+      AuthorizationType: NONE
+      RequestParameters:
+        method.request.path.proxy: true
+      Integration:
+        Type: HTTP_PROXY
+        ConnectionType: VPC_LINK
+        ConnectionId: !ImportValue
+          Fn::Sub: '${VPCLinkExportStack}-Id'
+        IntegrationHttpMethod: ANY
+        Uri: !Sub 
+          - "http://${NLBDNSName}/{proxy}"
+          - NLBDNSName: !ImportValue
+              Fn::Sub: '${NLBExportStack}-DNSName'
+        RequestParameters:
+          integration.request.path.proxy: method.request.path.proxy
+        IntegrationResponses:
+          - StatusCode: 200
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: false
+
+  # Root OPTIONS Method (CORS)
+  RootOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref RestApi
+      ResourceId: !GetAtt RestApi.RootResourceId
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+              method.response.header.Access-Control-Allow-Methods: "'GET,POST,PUT,DELETE,OPTIONS'"
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+            ResponseTemplates:
+              application/json: ''
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: false
+            method.response.header.Access-Control-Allow-Methods: false
+            method.response.header.Access-Control-Allow-Origin: false
+
+  # Proxy OPTIONS Method (CORS)
+  ProxyOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref RestApi
+      ResourceId: !Ref ProxyResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+              method.response.header.Access-Control-Allow-Methods: "'GET,POST,PUT,DELETE,OPTIONS'"
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+            ResponseTemplates:
+              application/json: ''
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: false
+            method.response.header.Access-Control-Allow-Methods: false
+            method.response.header.Access-Control-Allow-Origin: false
+
+  # Deployment
+  ApiDeployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn:
+      - RootAnyMethod
+      - ProxyAnyMethod
+      - RootOptionsMethod
+      - ProxyOptionsMethod
+    Properties:
+      RestApiId: !Ref RestApi
+      Description: !Sub "${Environment} deployment"
+
+  # Stage
+  ApiStage:
+    Type: AWS::ApiGateway::Stage
+    Properties:
+      RestApiId: !Ref RestApi
+      DeploymentId: !Ref ApiDeployment
+      StageName: !Ref StageName
+      Description: !Sub "${Environment} stage"
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-stage"
+
+Outputs:
+  RestApiId:
+    Description: REST API Gateway ID
+    Value: !Ref RestApi
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-${UniqueStackName}-Id'
+
+  RestApiEndpoint:
+    Description: REST API Gateway Endpoint URL
+    Value: !Sub "https://${RestApi}.execute-api.${AWS::Region}.amazonaws.com/${StageName}"
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-${UniqueStackName}-Endpoint'
+
+  RestApiArn:
+    Description: REST API Gateway ARN
+    Value: !Sub "arn:aws:apigateway:${AWS::Region}::/restapis/${RestApi}"
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-${UniqueStackName}-Arn'
+
+  StageName:
+    Description: API Gateway Stage Name
+    Value: !Ref StageName
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-${UniqueStackName}-Stage'
+
+  StackName:
+    Description: "Stack Name for cross-stack references"
+    Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}"
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-${UniqueStackName}"

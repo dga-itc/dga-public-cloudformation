@@ -1,0 +1,46 @@
+[
+  {
+    "ParameterKey": "ProjectName",
+    "ParameterValue": "tuxtum"
+  },
+  {
+    "ParameterKey": "Environment",
+    "ParameterValue": "uat"
+  },
+  {
+    "ParameterKey": "UniqueStackName",
+    "ParameterValue": "kuma-route53"
+  },
+  {
+    "ParameterKey": "HostedZoneId",
+    "ParameterValue": "Z0542786OBTXJHBFRS1H"
+  },
+  {
+    "ParameterKey": "HostedZoneName",
+    "ParameterValue": "superapps-th.cloud"
+  },
+  {
+    "ParameterKey": "RecordName",
+    "ParameterValue": "tuxtum-uat-kuma.superapps-th.cloud"
+  },
+  {
+    "ParameterKey": "TargetType",
+    "ParameterValue": "NLB"
+  },
+  {
+    "ParameterKey": "LoadBalancerStackUniqueName",
+    "ParameterValue": ""
+  },
+  {
+    "ParameterKey": "TargetDNSName",
+    "ParameterValue": "REPLACE_WITH_NLB_DNS_NAME"
+  },
+  {
+    "ParameterKey": "TargetHostedZoneId",
+    "ParameterValue": "REPLACE_WITH_NLB_HOSTED_ZONE_ID"
+  },
+  {
+    "ParameterKey": "CostCenter",
+    "ParameterValue": "IT"
+  }
+]

@@ -1,0 +1,182 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Single ECR Repository'
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "Project Information"
+        Parameters:
+          - ProjectName
+          - Environment
+          - UniqueStackName
+          - CostCenter
+      - Label:
+          default: "Repository Configuration"
+        Parameters:
+          - RepositoryName
+          - ServiceName
+          - ImageTagMutability
+          - ScanOnPush
+      - Label:
+          default: "Lifecycle Management"
+        Parameters:
+          - LifecycleMaxImages
+          - LifecycleDaysUntagged
+    ParameterLabels:
+      ProjectName:
+        default: "Project Name"
+      Environment:
+        default: "Environment"
+      UniqueStackName:
+        default: "Stack Identifier"
+      CostCenter:
+        default: "Cost Center"
+      RepositoryName:
+        default: "Repository Name"
+      ServiceName:
+        default: "Service Name (for tagging)"
+      ImageTagMutability:
+        default: "Image Tag Mutability"
+      ScanOnPush:
+        default: "Enable Image Scanning on Push"
+      LifecycleMaxImages:
+        default: "Maximum Tagged Images to Keep"
+      LifecycleDaysUntagged:
+        default: "Days to Keep Untagged Images"
+
+Parameters:
+  # Standard Parameters
+  ProjectName:
+    Type: String
+    Description: "Project identifier"
+  
+  Environment:
+    Type: String
+    Description: "Environment identifier"
+    AllowedValues: ["dev", "sit", "uat", "pvt", "pre-prod", "prod"]
+  
+  UniqueStackName:
+    Type: String
+    Description: "Unique identifier for this stack"
+  
+  CostCenter:
+    Type: String
+    Description: "Cost center for billing"
+    Default: "IT"
+
+  # Repository Configuration
+  RepositoryName:
+    Type: String
+    Description: "Name for the ECR repository"
+  
+  ServiceName:
+    Type: String
+    Description: "Service name for tagging"
+  
+  ImageTagMutability:
+    Type: String
+    Description: "Image tag mutability setting"
+    Default: "MUTABLE"
+    AllowedValues: ["MUTABLE", "IMMUTABLE"]
+  
+  ScanOnPush:
+    Type: String
+    Description: "Enable image scanning on push"
+    Default: "true"
+    AllowedValues: ["true", "false"]
+  
+  LifecycleMaxImages:
+    Type: Number
+    Description: "Maximum number of images to keep"
+    Default: 10
+    MinValue: 1
+    MaxValue: 1000
+  
+  LifecycleDaysUntagged:
+    Type: Number
+    Description: "Days to keep untagged images"
+    Default: 1
+    MinValue: 1
+    MaxValue: 365
+
+Conditions:
+  EnableScanning: !Equals [!Ref ScanOnPush, "true"]
+
+Resources:
+  # ECR Repository
+  Repository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Sub "${ProjectName}-${Environment}-${RepositoryName}"
+      ImageTagMutability: !Ref ImageTagMutability
+      ImageScanningConfiguration:
+        ScanOnPush: !If [EnableScanning, true, false]
+      LifecyclePolicy:
+        LifecyclePolicyText: !Sub |
+          {
+            "rules": [
+              {
+                "rulePriority": 1,
+                "description": "Keep last ${LifecycleMaxImages} tagged images",
+                "selection": {
+                  "tagStatus": "tagged",
+                  "tagPrefixList": ["v", "latest", "main", "dev", "prod"],
+                  "countType": "imageCountMoreThan",
+                  "countNumber": ${LifecycleMaxImages}
+                },
+                "action": {
+                  "type": "expire"
+                }
+              },
+              {
+                "rulePriority": 2,
+                "description": "Delete untagged images older than ${LifecycleDaysUntagged} days",
+                "selection": {
+                  "tagStatus": "untagged",
+                  "countType": "sinceImagePushed",
+                  "countUnit": "days",
+                  "countNumber": ${LifecycleDaysUntagged}
+                },
+                "action": {
+                  "type": "expire"
+                }
+              }
+            ]
+          }
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}"
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: CostCenter
+          Value: !Ref CostCenter
+        - Key: Service
+          Value: !Ref ServiceName
+
+Outputs:
+  RepositoryUri:
+    Description: URI of the ECR repository
+    Value: !GetAtt Repository.RepositoryUri
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-${UniqueStackName}-Uri'
+  
+  RepositoryArn:
+    Description: ARN of the ECR repository
+    Value: !GetAtt Repository.Arn
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-${UniqueStackName}-Arn'
+  
+  RepositoryName:
+    Description: Name of the ECR repository
+    Value: !Ref Repository
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-${UniqueStackName}-Name'
+
+  StackName:
+    Description: "Stack Name for cross-stack references"
+    Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}"
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-${UniqueStackName}"

@@ -1,0 +1,705 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Web Platform Solution v1.0 - CloudFront + WAF + ALB(Private) + NLB(Public)'
+
+Metadata:
+  Version: "v1.0"
+  LastUpdated: "2025-01-26"
+  Purpose: "Complete web platform with dual traffic paths"
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "Project Information"
+        Parameters:
+          - ProjectName
+          - Environment
+          - UniqueStackName
+          - CostCenter
+      - Label:
+          default: "Network Configuration"
+        Parameters:
+          - VPCExportStack
+          - VPCImportMode
+          - VpcId
+          - PrivateSubnet1Id
+          - PrivateSubnet2Id
+          - PublicSubnet1Id
+          - PublicSubnet2Id
+          - EIPDeletionPolicy
+      - Label:
+          default: "WAF Configuration"
+        Parameters:
+          - EnableWAF
+          - RateLimitPerIP
+          - EnableGeoBlocking
+          - BlockedCountries
+      - Label:
+          default: "CloudFront Configuration"
+        Parameters:
+          - EnableCloudFront
+          - PriceClass
+          - ViewerProtocolPolicy
+          - EnableCustomDomain
+          - CustomDomainName
+          - CertificateArn
+      - Label:
+          default: "Load Balancer Configuration"
+        Parameters:
+          - ALBCertificateArn
+          - NLBScheme
+          - ALBScheme
+      - Label:
+          default: "Resource Policies"
+        Parameters:
+          - ResourceDeletionPolicy
+          - ResourceUpdateReplacePolicy
+    ParameterLabels:
+      ProjectName:
+        default: "Project Name"
+      Environment:
+        default: "Environment"
+      UniqueStackName:
+        default: "Stack Identifier"
+      CostCenter:
+        default: "Cost Center"
+      VPCExportStack:
+        default: "VPC Export Stack Name"
+      VPCImportMode:
+        default: "VPC Import Mode"
+      VpcId:
+        default: "VPC ID (Manual)"
+      PrivateSubnet1Id:
+        default: "Private Subnet 1 ID (Manual)"
+      PrivateSubnet2Id:
+        default: "Private Subnet 2 ID (Manual)"
+      PublicSubnet1Id:
+        default: "Public Subnet 1 ID (Manual)"
+      PublicSubnet2Id:
+        default: "Public Subnet 2 ID (Manual)"
+      EIPDeletionPolicy:
+        default: "EIP Deletion Policy"
+      EnableWAF:
+        default: "Enable WAF Protection"
+      RateLimitPerIP:
+        default: "Rate Limit per IP"
+      EnableGeoBlocking:
+        default: "Enable Geographic Blocking"
+      BlockedCountries:
+        default: "Blocked Countries"
+      EnableCloudFront:
+        default: "Enable CloudFront CDN"
+      PriceClass:
+        default: "CloudFront Price Class"
+      ViewerProtocolPolicy:
+        default: "Viewer Protocol Policy"
+      EnableCustomDomain:
+        default: "Enable Custom Domain"
+      CustomDomainName:
+        default: "Custom Domain Name"
+      CertificateArn:
+        default: "CloudFront Certificate ARN"
+      ALBCertificateArn:
+        default: "ALB Certificate ARN"
+      NLBScheme:
+        default: "NLB Scheme"
+      ALBScheme:
+        default: "ALB Scheme"
+      ResourceDeletionPolicy:
+        default: "Resource Deletion Policy"
+      ResourceUpdateReplacePolicy:
+        default: "Resource Update Replace Policy"
+
+Parameters:
+  ProjectName:
+    Type: String
+    Description: "Project identifier (Update requires: Replacement - changes resource names)"
+  
+  Environment:
+    Type: String
+    Description: "Environment identifier (Update requires: Replacement - changes resource names)"
+    AllowedValues: ["dev", "sit", "uat", "pvt", "pre-prod", "prod"]
+  
+  UniqueStackName:
+    Type: String
+    Description: "Unique identifier for this stack (Update requires: Replacement - changes resource names)"
+    Default: "web-platform"
+  
+  CostCenter:
+    Type: String
+    Description: "Cost center for billing (Update requires: No interruption)"
+    Default: "IT"
+
+  # Network Configuration
+  VPCExportStack:
+    Type: String
+    Description: "VPC stack name to import from (Update requires: No interruption)"
+    Default: "nsf-lotto-prod-main-vpc"
+
+  # Import Mode Configuration
+  VPCImportMode:
+    Type: String
+    Description: "How to get VPC and Subnet IDs (Update requires: No interruption)"
+    AllowedValues: ["AUTO", "MANUAL"]
+    Default: "AUTO"
+
+  # Manual Mode Parameters (VPC)
+  VpcId:
+    Type: String
+    Description: "VPC ID (only if VPCImportMode=MANUAL) (Update requires: No interruption)"
+    Default: ""
+
+  PrivateSubnet1Id:
+    Type: String
+    Description: "Private Subnet 1 ID (only if VPCImportMode=MANUAL) (Update requires: No interruption)"
+    Default: ""
+
+  PrivateSubnet2Id:
+    Type: String
+    Description: "Private Subnet 2 ID (only if VPCImportMode=MANUAL) (Update requires: No interruption)"
+    Default: ""
+
+  PublicSubnet1Id:
+    Type: String
+    Description: "Public Subnet 1 ID (only if VPCImportMode=MANUAL) (Update requires: No interruption)"
+    Default: ""
+
+  PublicSubnet2Id:
+    Type: String
+    Description: "Public Subnet 2 ID (only if VPCImportMode=MANUAL) (Update requires: No interruption)"
+    Default: ""
+
+  # EIP Configuration
+  EIPDeletionPolicy:
+    Type: String
+    Description: "EIP deletion policy during stack deletion (Update requires: No interruption)"
+    AllowedValues: ["Delete", "Retain"]
+    Default: "Delete"
+
+  # WAF Configuration
+  EnableWAF:
+    Type: String
+    Description: "Enable WAF protection (Update requires: No interruption)"
+    AllowedValues: ["true", "false"]
+    Default: "true"
+
+  RateLimitPerIP:
+    Type: Number
+    Description: "Rate limit per IP (requests per 5 minutes) (Update requires: No interruption)"
+    Default: 2000
+    MinValue: 100
+    MaxValue: 20000
+
+  EnableGeoBlocking:
+    Type: String
+    Description: "Enable geographic blocking (Update requires: No interruption)"
+    AllowedValues: ["true", "false"]
+    Default: "false"
+
+  BlockedCountries:
+    Type: CommaDelimitedList
+    Description: "List of country codes to block (Update requires: No interruption)"
+    Default: ""
+
+  # CloudFront Configuration
+  EnableCloudFront:
+    Type: String
+    Description: "Enable CloudFront CDN (Update requires: No interruption)"
+    AllowedValues: ["true", "false"]
+    Default: "true"
+
+  PriceClass:
+    Type: String
+    Description: "CloudFront price class (Update requires: No interruption)"
+    AllowedValues: ["PriceClass_All", "PriceClass_200", "PriceClass_100"]
+    Default: "PriceClass_100"
+
+  ViewerProtocolPolicy:
+    Type: String
+    Description: "Viewer protocol policy (Update requires: No interruption)"
+    AllowedValues: ["allow-all", "https-only", "redirect-to-https"]
+    Default: "redirect-to-https"
+
+  EnableCustomDomain:
+    Type: String
+    Description: "Enable custom domain for CloudFront (Update requires: No interruption)"
+    AllowedValues: ["true", "false"]
+    Default: "false"
+
+  CustomDomainName:
+    Type: String
+    Description: "Custom domain name (Update requires: No interruption)"
+    Default: ""
+
+  CertificateArn:
+    Type: String
+    Description: "SSL certificate ARN in us-east-1 for CloudFront (Update requires: No interruption)"
+    Default: ""
+
+  # Load Balancer Configuration
+  ALBCertificateArn:
+    Type: String
+    Description: "SSL certificate ARN for ALB (Update requires: No interruption)"
+    Default: ""
+
+  NLBScheme:
+    Type: String
+    Description: "NLB scheme (Update requires: Replacement - changes NLB type)"
+    AllowedValues: ["internet-facing", "internal"]
+    Default: "internet-facing"
+
+  ALBScheme:
+    Type: String
+    Description: "ALB scheme (Update requires: Replacement - changes ALB type)"
+    AllowedValues: ["internet-facing", "internal"]
+    Default: "internal"
+
+  # Resource Policies
+  ResourceDeletionPolicy:
+    Type: String
+    Description: "Resource deletion policy during stack deletion (Update requires: No interruption)"
+    AllowedValues: ["Delete", "Retain", "Snapshot"]
+    Default: "Delete"
+
+  ResourceUpdateReplacePolicy:
+    Type: String
+    Description: "Resource update replacement policy during updates (Update requires: No interruption)"
+    AllowedValues: ["Delete", "Retain", "Snapshot"]
+    Default: "Delete"
+
+Conditions:
+  ShouldEnableWAF: !Equals [!Ref EnableWAF, "true"]
+  ShouldEnableCloudFront: !Equals [!Ref EnableCloudFront, "true"]
+  ShouldEnableGeoBlocking: !Equals [!Ref EnableGeoBlocking, "true"]
+  HasBlockedCountries: !Not [!Equals [!Join ["", !Ref BlockedCountries], ""]]
+  ShouldEnableCustomDomain: !Equals [!Ref EnableCustomDomain, "true"]
+  HasALBCertificate: !Not [!Equals [!Ref ALBCertificateArn, ""]]
+  UseManualVPC: !Equals [!Ref VPCImportMode, "MANUAL"]
+
+Resources:
+  # ==========================================
+  # Elastic IP Resources for NLB
+  # ==========================================
+  NLB_EIP1:
+    Type: AWS::EC2::EIP
+    DeletionPolicy: !Ref EIPDeletionPolicy
+    UpdateReplacePolicy: !Ref EIPDeletionPolicy
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-nlb-eip1"
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: CostCenter
+          Value: !Ref CostCenter
+
+  NLB_EIP2:
+    Type: AWS::EC2::EIP
+    DeletionPolicy: !Ref EIPDeletionPolicy
+    UpdateReplacePolicy: !Ref EIPDeletionPolicy
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-nlb-eip2"
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: CostCenter
+          Value: !Ref CostCenter
+
+  # ==========================================
+  # WAF Resources
+  # ==========================================
+  WAFWebACL:
+    Type: AWS::WAFv2::WebACL
+    Condition: ShouldEnableWAF
+    DeletionPolicy: !Ref ResourceDeletionPolicy
+    UpdateReplacePolicy: !Ref ResourceUpdateReplacePolicy
+    Properties:
+      Name: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-waf"
+      Scope: CLOUDFRONT
+      DefaultAction:
+        Allow: {}
+      Rules:
+        - Name: RateLimitPerIP
+          Priority: 10
+          Statement:
+            RateBasedStatement:
+              Limit: !Ref RateLimitPerIP
+              AggregateKeyType: IP
+          Action:
+            Block: {}
+          VisibilityConfig:
+            SampledRequestsEnabled: true
+            CloudWatchMetricsEnabled: true
+            MetricName: RateLimitPerIP
+        - !If
+          - ShouldEnableGeoBlocking
+          - Name: GeoBlocking
+            Priority: 20
+            Statement:
+              GeoMatchStatement:
+                CountryCodes: !Ref BlockedCountries
+            Action:
+              Block: {}
+            VisibilityConfig:
+              SampledRequestsEnabled: true
+              CloudWatchMetricsEnabled: true
+              MetricName: GeoBlocking
+          - !Ref "AWS::NoValue"
+        - Name: AWSManagedRulesCommonRuleSet
+          Priority: 30
+          OverrideAction:
+            None: {}
+          Statement:
+            ManagedRuleGroupStatement:
+              VendorName: AWS
+              Name: AWSManagedRulesCommonRuleSet
+          VisibilityConfig:
+            SampledRequestsEnabled: true
+            CloudWatchMetricsEnabled: true
+            MetricName: CommonRuleSet
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-waf"
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: CostCenter
+          Value: !Ref CostCenter
+
+  # ==========================================
+  # Application Load Balancer (Private)
+  # ==========================================
+  ALBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    DeletionPolicy: !Ref ResourceDeletionPolicy
+    UpdateReplacePolicy: !Ref ResourceUpdateReplacePolicy
+    Properties:
+      GroupDescription: "Security group for private ALB"
+      VpcId: !If
+        - UseManualVPC
+        - !Ref VpcId
+        - !ImportValue
+            Fn::Sub: "${VPCExportStack}-Id"
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+          Description: "HTTP from CloudFront and NLB"
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+          Description: "HTTPS from CloudFront and NLB"
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-alb-sg"
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: CostCenter
+          Value: !Ref CostCenter
+
+  ApplicationLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    DeletionPolicy: !Ref ResourceDeletionPolicy
+    UpdateReplacePolicy: !Ref ResourceUpdateReplacePolicy
+    Properties:
+      Name: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-alb"
+      Scheme: !Ref ALBScheme
+      Type: application
+      IpAddressType: ipv4
+      Subnets:
+        - !If
+          - UseManualVPC
+          - !Ref PrivateSubnet1Id
+          - !ImportValue
+              Fn::Sub: "${VPCExportStack}-PrivateSubnet1-Id"
+        - !If
+          - UseManualVPC
+          - !Ref PrivateSubnet2Id
+          - !ImportValue
+              Fn::Sub: "${VPCExportStack}-PrivateSubnet2-Id"
+      SecurityGroups:
+        - !Ref ALBSecurityGroup
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-alb"
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: CostCenter
+          Value: !Ref CostCenter
+
+  ALBTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    DeletionPolicy: !Ref ResourceDeletionPolicy
+    UpdateReplacePolicy: Retain
+    Properties:
+      Name: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-alb-tg-80"
+      Port: 80
+      Protocol: HTTP
+      VpcId: !ImportValue
+        Fn::Sub: "${VPCExportStack}-Id"
+      TargetType: ip
+      HealthCheckPath: /health
+      HealthCheckProtocol: HTTP
+      HealthCheckIntervalSeconds: 30
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 3
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-alb-tg"
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: CostCenter
+          Value: !Ref CostCenter
+
+  ALBListener80:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    DeletionPolicy: !Ref ResourceDeletionPolicy
+    UpdateReplacePolicy: !Ref ResourceUpdateReplacePolicy
+    Properties:
+      LoadBalancerArn: !Ref ApplicationLoadBalancer
+      Port: 80
+      Protocol: HTTP
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref ALBTargetGroup
+
+  ALBListener443:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Condition: HasALBCertificate
+    DeletionPolicy: !Ref ResourceDeletionPolicy
+    UpdateReplacePolicy: !Ref ResourceUpdateReplacePolicy
+    Properties:
+      LoadBalancerArn: !Ref ApplicationLoadBalancer
+      Port: 443
+      Protocol: HTTPS
+      Certificates:
+        - CertificateArn: !Ref ALBCertificateArn
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref ALBTargetGroup
+
+  # ==========================================
+  # Network Load Balancer (Public)
+  # ==========================================
+  NetworkLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    DeletionPolicy: !Ref ResourceDeletionPolicy
+    UpdateReplacePolicy: !Ref ResourceUpdateReplacePolicy
+    Properties:
+      Name: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-nlb"
+      Scheme: !Ref NLBScheme
+      Type: network
+      IpAddressType: ipv4
+      SubnetMappings:
+        - SubnetId: !If
+            - UseManualVPC
+            - !Ref PublicSubnet1Id
+            - !ImportValue
+                Fn::Sub: "${VPCExportStack}-PublicSubnet1-Id"
+          AllocationId: !GetAtt NLB_EIP1.AllocationId
+        - SubnetId: !If
+            - UseManualVPC
+            - !Ref PublicSubnet2Id
+            - !ImportValue
+                Fn::Sub: "${VPCExportStack}-PublicSubnet2-Id"
+          AllocationId: !GetAtt NLB_EIP2.AllocationId
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-nlb"
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: CostCenter
+          Value: !Ref CostCenter
+
+  NLBTargetGroup80:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    DependsOn: NetworkLoadBalancer
+    DeletionPolicy: !Ref ResourceDeletionPolicy
+    UpdateReplacePolicy: Retain
+    Properties:
+      Name: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-nlb-tg-80"
+      Port: 80
+      Protocol: TCP
+      VpcId: !ImportValue
+        Fn::Sub: "${VPCExportStack}-Id"
+      TargetType: alb
+      Targets:
+        - Id: !Ref ApplicationLoadBalancer
+          Port: 80
+      HealthCheckProtocol: HTTP
+      HealthCheckPath: /health
+      HealthCheckIntervalSeconds: 30
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 3
+
+  NLBListener80:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    DeletionPolicy: !Ref ResourceDeletionPolicy
+    UpdateReplacePolicy: !Ref ResourceUpdateReplacePolicy
+    Properties:
+      LoadBalancerArn: !Ref NetworkLoadBalancer
+      Port: 80
+      Protocol: TCP
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref NLBTargetGroup80
+
+  # ==========================================
+  # CloudFront Distribution
+  # ==========================================
+  CloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Condition: ShouldEnableCloudFront
+    DeletionPolicy: !Ref ResourceDeletionPolicy
+    UpdateReplacePolicy: !Ref ResourceUpdateReplacePolicy
+    Properties:
+      DistributionConfig:
+        Origins:
+          - Id: !Sub "${ProjectName}-${Environment}-alb-origin"
+            DomainName: !GetAtt ApplicationLoadBalancer.DNSName
+            CustomOriginConfig:
+              HTTPPort: 80
+              HTTPSPort: 443
+              OriginProtocolPolicy: https-only
+              OriginSSLProtocols:
+                - TLSv1.2
+              OriginReadTimeout: 30
+              OriginKeepaliveTimeout: 5
+        DefaultCacheBehavior:
+          TargetOriginId: !Sub "${ProjectName}-${Environment}-alb-origin"
+          ViewerProtocolPolicy: !Ref ViewerProtocolPolicy
+          CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
+          OriginRequestPolicyId: 88a5eaf4-2fd4-4709-b370-b4c650ea3fcf
+          AllowedMethods:
+            - DELETE
+            - GET
+            - HEAD
+            - OPTIONS
+            - PATCH
+            - POST
+            - PUT
+          CachedMethods:
+            - GET
+            - HEAD
+            - OPTIONS
+          Compress: true
+        Enabled: true
+        HttpVersion: http2
+        IPV6Enabled: true
+        PriceClass: !Ref PriceClass
+        Aliases: !If
+          - ShouldEnableCustomDomain
+          - [!Ref CustomDomainName]
+          - !Ref "AWS::NoValue"
+        ViewerCertificate: !If
+          - ShouldEnableCustomDomain
+          - AcmCertificateArn: !Ref CertificateArn
+            SslSupportMethod: sni-only
+            MinimumProtocolVersion: TLSv1.2_2021
+          - CloudFrontDefaultCertificate: true
+        WebACLId: !If
+          - ShouldEnableWAF
+          - !GetAtt WAFWebACL.Arn
+          - !Ref "AWS::NoValue"
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-cf"
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: CostCenter
+          Value: !Ref CostCenter
+
+Outputs:
+  # Stack Name
+  StackName:
+    Description: "Stack Name for cross-stack references"
+    Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}"
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-${UniqueStackName}"
+
+  # WAF Outputs
+  WAFWebACLArn:
+    Condition: ShouldEnableWAF
+    Description: "WAF WebACL ARN"
+    Value: !GetAtt WAFWebACL.Arn
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-WAF-Arn"
+
+  # ALB Outputs
+  ALBArn:
+    Description: "Application Load Balancer ARN"
+    Value: !Ref ApplicationLoadBalancer
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-ALB-Arn"
+
+  ALBDNSName:
+    Description: "Application Load Balancer DNS Name"
+    Value: !GetAtt ApplicationLoadBalancer.DNSName
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-ALB-DNSName"
+
+  ALBTargetGroupArn:
+    Description: "ALB Target Group ARN"
+    Value: !Ref ALBTargetGroup
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-ALB-TG-Arn"
+
+  # NLB Outputs
+  NLBArn:
+    Description: "Network Load Balancer ARN"
+    Value: !Ref NetworkLoadBalancer
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-NLB-Arn"
+
+  NLBDNSName:
+    Description: "Network Load Balancer DNS Name"
+    Value: !GetAtt NetworkLoadBalancer.DNSName
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-NLB-DNSName"
+
+  # EIP Outputs
+  NLBEIP1:
+    Description: "NLB EIP 1 Public IP"
+    Value: !Ref NLB_EIP1
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-NLB-EIP1"
+
+  NLBEIP2:
+    Description: "NLB EIP 2 Public IP"
+    Value: !Ref NLB_EIP2
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-NLB-EIP2"
+
+  # CloudFront Outputs
+  CloudFrontDistributionId:
+    Condition: ShouldEnableCloudFront
+    Description: "CloudFront Distribution ID"
+    Value: !Ref CloudFrontDistribution
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-CF-Id"
+
+  CloudFrontDomainName:
+    Condition: ShouldEnableCloudFront
+    Description: "CloudFront Distribution Domain Name"
+    Value: !GetAtt CloudFrontDistribution.DomainName
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-CF-DomainName"

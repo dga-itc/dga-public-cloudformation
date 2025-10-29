@@ -1,0 +1,137 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'ECS Cluster Module v1.0'
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "Project Information"
+        Parameters:
+          - ProjectName
+          - Environment
+          - UniqueStackName
+          - CostCenter
+      - Label:
+          default: "ECS Configuration"
+        Parameters:
+          - ClusterName
+    ParameterLabels:
+      ProjectName:
+        default: "Project Name"
+      Environment:
+        default: "Environment"
+      UniqueStackName:
+        default: "Stack Unique Name"
+      CostCenter:
+        default: "Cost Center"
+      ClusterName:
+        default: "ECS Cluster Name"
+
+Parameters:
+  # Core Parameters
+  ProjectName:
+    Type: String
+    Description: "Project identifier"
+  
+  Environment:
+    Type: String
+    Description: "Environment identifier"
+    AllowedValues: ["dev", "sit", "uat", "pvt", "pre-prod", "prod"]
+  
+  UniqueStackName:
+    Type: String
+    Description: "Unique identifier for this stack"
+    Default: "ecs-cluster"
+
+  CostCenter:
+    Type: String
+    Description: "Cost center for billing"
+    Default: "IT"
+  ResourceDeletionPolicy:
+    Type: String
+    Description: "Resource deletion policy on stack deletion (Update requires: No interruption)"
+    AllowedValues: ["Delete", "Retain", "Snapshot"]
+    Default: "Delete"
+  
+  ResourceUpdateReplacePolicy:
+    Type: String
+    Description: "Resource update replacement policy during updates (Update requires: No interruption)"
+    AllowedValues: ["Delete", "Retain", "Snapshot"]
+    Default: "Delete"
+
+
+  # Cluster Configuration
+  ClusterName:
+    Type: String
+    Description: ECS Cluster name
+    Default: ""
+
+  EnableContainerInsights:
+    Type: String
+    Description: Enable CloudWatch Container Insights
+    AllowedValues:
+      - "enabled"
+      - "disabled"
+    Default: "enabled"
+
+Conditions:
+  UseDefaultClusterName: !Equals [!Ref ClusterName, ""]
+
+Resources:
+  # ECS Cluster
+  Cluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !If
+        - UseDefaultClusterName
+        - !Sub "${ProjectName}-${Environment}-${UniqueStackName}"
+        - !Ref ClusterName
+      ClusterSettings:
+        - Name: containerInsights
+          Value: !Ref EnableContainerInsights
+      CapacityProviders:
+        - FARGATE
+        - FARGATE_SPOT
+      DefaultCapacityProviderStrategy:
+        - CapacityProvider: FARGATE
+          Weight: 1
+          Base: 1
+      Tags:
+        - Key: Name
+          Value: !If
+            - UseDefaultClusterName
+            - !Sub "${ProjectName}-${Environment}-${UniqueStackName}"
+            - !Ref ClusterName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: CostCenter
+          Value: !Ref CostCenter
+        - Key: ManagedBy
+          Value: CloudFormation
+
+Outputs:
+  ClusterId:
+    Description: ECS Cluster ID
+    Value: !Ref Cluster
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-${UniqueStackName}-Id'
+
+  ClusterArn:
+    Description: ECS Cluster ARN
+    Value: !GetAtt Cluster.Arn
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-${UniqueStackName}-Arn'
+
+  ClusterName:
+    Description: ECS Cluster Name
+    Value: !Ref Cluster
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-${UniqueStackName}-Name'
+
+  StackName:
+    Description: "Stack Name for cross-stack references"
+    Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}"
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-${UniqueStackName}"

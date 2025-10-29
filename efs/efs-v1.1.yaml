@@ -1,0 +1,302 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'EFS Module v1.0 - Simple Elastic File System'
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "Project Information"
+        Parameters:
+          - ProjectName
+          - Environment
+          - UniqueStackName
+          - CostCenter
+      - Label:
+          default: "Network Configuration"
+        Parameters:
+          - VPCImportMode
+          - VPCExportStack
+          - VpcId
+          - ContainerSubnetId1
+          - ContainerSubnetId2
+      - Label:
+          default: "EFS Configuration"
+        Parameters:
+          - PerformanceMode
+          - ThroughputMode
+          - ProvisionedThroughputInMibps
+          - LifecyclePolicy
+      - Label:
+          default: "Security & Access"
+        Parameters:
+          - AllowedCidr
+    ParameterLabels:
+      ProjectName:
+        default: "Project Name"
+      Environment:
+        default: "Environment"
+      UniqueStackName:
+        default: "Stack Identifier"
+      CostCenter:
+        default: "Cost Center"
+      VPCImportMode:
+        default: "VPC Import Mode"
+      VPCExportStack:
+        default: "VPC Export Stack Name"
+      VpcId:
+        default: "VPC ID (Manual Mode)"
+      ContainerSubnetId1:
+        default: "Container Subnet 1 ID"
+      ContainerSubnetId2:
+        default: "Container Subnet 2 ID"
+      PerformanceMode:
+        default: "EFS Performance Mode"
+      ThroughputMode:
+        default: "EFS Throughput Mode"
+      ProvisionedThroughputInMibps:
+        default: "Provisioned Throughput (MiB/s)"
+      LifecyclePolicy:
+        default: "Lifecycle Policy"
+      AllowedCidr:
+        default: "Allowed CIDR Block"
+
+Parameters:
+  # VPC Import Mode
+  VPCImportMode:
+    Type: String
+    Description: "How to get VPC and Subnet IDs"
+    AllowedValues:
+      - "AUTO"
+      - "MANUAL"
+    Default: "AUTO"
+
+  VpcId:
+    Type: String
+    Description: "VPC ID (only if VPCImportMode=MANUAL)"
+    Default: ""
+
+  ContainerSubnetId1:
+    Type: String
+    Description: "Container subnet ID 1 (only if VPCImportMode=MANUAL)"
+    Default: ""
+
+  ContainerSubnetId2:
+    Type: String
+    Description: "Container subnet ID 2 (only if VPCImportMode=MANUAL)"
+    Default: ""
+
+  # EFS Configuration
+  PerformanceMode:
+    Type: String
+    Default: generalPurpose
+    Description: "EFS performance mode"
+    AllowedValues:
+      - generalPurpose
+      - maxIO
+
+  ThroughputMode:
+    Type: String
+    Default: bursting
+    Description: "EFS throughput mode"
+    AllowedValues:
+      - bursting
+      - provisioned
+      - elastic
+
+  ProvisionedThroughputInMibps:
+    Type: Number
+    Default: 0
+    Description: "Provisioned throughput in MiB/s (only for provisioned mode, 0 = not used)"
+    MinValue: 0
+    MaxValue: 1024
+
+  LifecyclePolicy:
+    Type: String
+    Default: "AFTER_30_DAYS"
+    Description: "Transition to Infrequent Access after"
+    AllowedValues:
+      - ""
+      - "AFTER_7_DAYS"
+      - "AFTER_14_DAYS"
+      - "AFTER_30_DAYS"
+      - "AFTER_60_DAYS"
+      - "AFTER_90_DAYS"
+
+  # Core Parameters
+  ProjectName:
+    Type: String
+    Description: "Project identifier"
+  
+  Environment:
+    Type: String
+    Description: "Environment identifier"
+    AllowedValues: ["dev", "sit", "uat", "pvt", "pre-prod", "prod"]
+  
+  UniqueStackName:
+    Type: String
+    Description: "Unique identifier for this stack"
+    Default: "efs"
+  
+  # Stack Dependencies
+  VPCExportStack:
+    Type: String
+    Description: "VPC stack name to import from"
+    Default: "lab-iac-prod-main-vpc"
+
+  VpcCidr:
+    Type: String
+    Description: "Main VPC CIDR block"
+    Default: "10.0.0.0/16"
+
+  SecondaryCidr:
+    Type: String
+    Description: "Secondary VPC CIDR block for container subnets"
+    Default: "100.64.0.0/16"
+
+  CostCenter:
+    Type: String
+    Description: "Cost center for billing"
+    Default: "IT"
+  ResourceDeletionPolicy:
+    Type: String
+    Description: "Resource deletion policy on stack deletion (Update requires: No interruption)"
+    AllowedValues: ["Delete", "Retain", "Snapshot"]
+    Default: "Delete"
+  
+  ResourceUpdateReplacePolicy:
+    Type: String
+    Description: "Resource update replacement policy during updates (Update requires: No interruption)"
+    AllowedValues: ["Delete", "Retain", "Snapshot"]
+    Default: "Delete"
+
+
+Conditions:
+  IsProvisionedMode: !Equals [!Ref ThroughputMode, "provisioned"]
+  HasLifecyclePolicy: !Not [!Equals [!Ref LifecyclePolicy, ""]]
+  UseAutoImportVPC: !Equals [!Ref VPCImportMode, "AUTO"]
+  UseManualVPC: !Equals [!Ref VPCImportMode, "MANUAL"]
+
+Resources:
+  # EFS Security Group
+  EFSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-sg"
+      GroupDescription: Security group for EFS mount targets
+      VpcId: !If
+        - UseManualVPC
+        - !Ref VpcId
+        - !ImportValue
+            Fn::Sub: '${VPCExportStack}-Id'
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 2049
+          ToPort: 2049
+          CidrIp: !Ref VpcCidr
+          Description: Allow NFS from main VPC CIDR
+        - IpProtocol: tcp
+          FromPort: 2049
+          ToPort: 2049
+          CidrIp: !Ref SecondaryCidr
+          Description: Allow NFS from container subnets
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+          Description: Allow all outbound
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-sg"
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: CostCenter
+          Value: !Ref CostCenter
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  # EFS File System
+  EFSFileSystem:
+    Type: AWS::EFS::FileSystem
+    Properties:
+      PerformanceMode: !Ref PerformanceMode
+      ThroughputMode: !Ref ThroughputMode
+      ProvisionedThroughputInMibps: !If
+        - IsProvisionedMode
+        - !Ref ProvisionedThroughputInMibps
+        - !Ref AWS::NoValue
+      Encrypted: true
+      LifecyclePolicies: !If
+        - HasLifecyclePolicy
+        - - TransitionToIA: !Ref LifecyclePolicy
+        - !Ref AWS::NoValue
+      FileSystemTags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}"
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: CostCenter
+          Value: !Ref CostCenter
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  # EFS Mount Target - Container Subnet 1
+  MountTarget1:
+    Type: AWS::EFS::MountTarget
+    Properties:
+      FileSystemId: !Ref EFSFileSystem
+      SubnetId: !If
+        - UseManualVPC
+        - !Ref ContainerSubnetId1
+        - !ImportValue
+            Fn::Sub: '${VPCExportStack}-ContainerSubnet1-Id'
+      SecurityGroups:
+        - !Ref EFSSecurityGroup
+
+  # EFS Mount Target - Container Subnet 2
+  MountTarget2:
+    Type: AWS::EFS::MountTarget
+    Properties:
+      FileSystemId: !Ref EFSFileSystem
+      SubnetId: !If
+        - UseManualVPC
+        - !Ref ContainerSubnetId2
+        - !ImportValue
+            Fn::Sub: '${VPCExportStack}-ContainerSubnet2-Id'
+      SecurityGroups:
+        - !Ref EFSSecurityGroup
+
+Outputs:
+  FileSystemId:
+    Description: EFS File System ID
+    Value: !Ref EFSFileSystem
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-${UniqueStackName}-Id'
+
+  FileSystemArn:
+    Description: EFS File System ARN
+    Value: !GetAtt EFSFileSystem.Arn
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-${UniqueStackName}-Arn'
+
+  SecurityGroupId:
+    Description: EFS Security Group ID
+    Value: !Ref EFSSecurityGroup
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-${UniqueStackName}-SecurityGroup-Id'
+
+  MountTarget1Id:
+    Description: EFS Mount Target 1 ID
+    Value: !Ref MountTarget1
+
+  MountTarget2Id:
+    Description: EFS Mount Target 2 ID
+    Value: !Ref MountTarget2
+
+  StackName:
+    Description: "Stack Name for cross-stack references"
+    Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}"
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-${UniqueStackName}"

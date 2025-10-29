@@ -1,0 +1,244 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Application Load Balancer Stack'
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "Project Information"
+        Parameters:
+          - ProjectName
+          - Environment
+          - UniqueStackName
+          - CostCenter
+      - Label:
+          default: "Service Configuration"
+        Parameters:
+          - CertificateArn
+      - Label:
+          default: "Stack Dependencies"
+        Parameters:
+          - VPCExportStack
+      - Label:
+          default: "Import Configuration"
+        Parameters:
+          - VPCImportMode
+          - VpcId
+          - PrivateSubnetId1
+          - PrivateSubnetId2
+    ParameterLabels:
+      ProjectName:
+        default: "Project Name"
+      Environment:
+        default: "Environment"
+      UniqueStackName:
+        default: "Stack Unique Name"
+      CostCenter:
+        default: "Cost Center"
+      CertificateArn:
+        default: "SSL Certificate ARN"
+      VPCExportStack:
+        default: "VPC Export Stack Name"
+      VPCImportMode:
+        default: "VPC Import Mode"
+      VpcId:
+        default: "VPC ID (Manual)"
+      PrivateSubnetId1:
+        default: "Private Subnet 1 ID (Manual)"
+      PrivateSubnetId2:
+        default: "Private Subnet 2 ID (Manual)"
+
+Parameters:
+  ProjectName:
+    Type: String
+    Description: "Project identifier"
+  
+  Environment:
+    Type: String
+    Description: "Environment identifier"
+    AllowedValues: ["dev", "sit", "uat", "pvt", "pre-prod", "prod"]
+  
+  UniqueStackName:
+    Type: String
+    Description: "Unique identifier for this stack"
+    Default: "internal-alb"
+  
+  VPCExportStack:
+    Type: String
+    Description: "VPC stack name to import from"
+    Default: "lab-iac-prod-main-vpc"
+  
+  VPCImportMode:
+    Type: String
+    AllowedValues: ["AUTO", "MANUAL"]
+    Default: "AUTO"
+  
+  VpcId:
+    Type: String
+    Default: ""
+  
+  PrivateSubnetId1:
+    Type: String
+    Default: ""
+  
+  PrivateSubnetId2:
+    Type: String
+    Default: ""
+  
+  CertificateArn:
+    Type: String
+
+  CostCenter:
+    Type: String
+    Description: "Cost center for billing"
+    Default: "IT"
+  ResourceDeletionPolicy:
+    Type: String
+    Description: "Resource deletion policy on stack deletion (Update requires: No interruption)"
+    AllowedValues: ["Delete", "Retain", "Snapshot"]
+    Default: "Delete"
+  
+  ResourceUpdateReplacePolicy:
+    Type: String
+    Description: "Resource update replacement policy during updates (Update requires: No interruption)"
+    AllowedValues: ["Delete", "Retain", "Snapshot"]
+    Default: "Delete"
+
+
+Conditions:
+  UseManualVPC: !Equals [!Ref VPCImportMode, "MANUAL"]
+
+Mappings:
+  EnvMap:
+    prod: { Short: "Prd" }
+    pre-prod: { Short: "Pprd" }
+    pvt: { Short: "Pvt" }
+    uat: { Short: "Uat" }
+    dev: { Short: "Dev" }
+    sit: { Short: "Sit" }
+
+Resources:
+  ALBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-sg"
+      GroupDescription: Security group for Application Load Balancer
+      VpcId: !If
+        - UseManualVPC
+        - !Ref VpcId
+        - !ImportValue 
+            Fn::Sub: '${VPCExportStack}-Id'
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 10.0.0.0/8
+          Description: Allow HTTP from VPC
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 10.0.0.0/8
+          Description: Allow HTTPS from VPC
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-sg"
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: CostCenter
+          Value: !Ref CostCenter
+
+  ApplicationLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: !Sub
+        - "${ProjectName}${EnvShort}-${UniqueStackName}"
+        - EnvShort: !FindInMap [EnvMap, !Ref Environment, Short]
+      Type: application
+      Scheme: internal
+      SecurityGroups:
+        - !Ref ALBSecurityGroup
+      Subnets:
+        - !If
+          - UseManualVPC
+          - !Ref PrivateSubnetId1
+          - !ImportValue 
+              Fn::Sub: '${VPCExportStack}-PrivateSubnet1-Id'
+        - !If
+          - UseManualVPC
+          - !Ref PrivateSubnetId2
+          - !ImportValue 
+              Fn::Sub: '${VPCExportStack}-PrivateSubnet2-Id'
+
+  ALBListenerHTTP:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref ApplicationLoadBalancer
+      Port: 80
+      Protocol: HTTP
+      DefaultActions:
+        - Type: redirect
+          RedirectConfig:
+            Protocol: HTTPS
+            Port: '443'
+            StatusCode: HTTP_301
+
+  ALBListenerHTTPS:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref ApplicationLoadBalancer
+      Port: 443
+      Protocol: HTTPS
+      SslPolicy: ELBSecurityPolicy-TLS13-1-2-2021-06
+      Certificates:
+        - CertificateArn: !Ref CertificateArn
+      DefaultActions:
+        - Type: fixed-response
+          FixedResponseConfig:
+            StatusCode: '200'
+            ContentType: text/plain
+            MessageBody: 'OK'
+
+Outputs:
+  ALBArn:
+    Description: Application Load Balancer ARN
+    Value: !Ref ApplicationLoadBalancer
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-${UniqueStackName}-Arn'
+
+  ALBSecurityGroupId:
+    Description: ALB Security Group ID
+    Value: !Ref ALBSecurityGroup
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-${UniqueStackName}-SecurityGroup-Id'
+
+  ALBDNSName:
+    Description: Application Load Balancer DNS Name
+    Value: !GetAtt ApplicationLoadBalancer.DNSName
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-${UniqueStackName}-DNSName'
+
+  ALBZoneId:
+    Description: Application Load Balancer Hosted Zone ID
+    Value: !GetAtt ApplicationLoadBalancer.CanonicalHostedZoneID
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-${UniqueStackName}-ZoneId'
+
+  ALBListenerArn:
+    Description: ALB HTTP Listener ARN
+    Value: !Ref ALBListenerHTTP
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-${UniqueStackName}-Listener-Arn'
+
+  ALBListenerHTTPSArn:
+    Description: ALB HTTPS Listener ARN
+    Value: !Ref ALBListenerHTTPS
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-${UniqueStackName}-HTTPSListener-Arn'
+
+  StackName:
+    Description: "Stack Name for cross-stack references"
+    Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}"
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-${UniqueStackName}"

@@ -1,0 +1,23 @@
+# Template: efs-v1.0.yaml
+# Generated: 2025-01-19
+VPCImportMode: "AUTO"
+VpcId: ""
+ContainerSubnetId1: ""
+ContainerSubnetId2: ""
+PerformanceMode: "generalPurpose"
+ThroughputMode: "bursting"
+ProvisionedThroughputInMibps: 0
+LifecyclePolicy: "AFTER_30_DAYS"
+ProjectName: "tuxtum"
+Environment: "uat"
+UniqueStackName: "main-efs"
+VPCStackUniqueName: "main-vpc"
+VpcCidr: "10.0.0.0/24"
+SecondaryCidr: "100.64.0.0/16"
+Owner: "tuxtum"
+CostCenter: "IT"
+BusinessUnit: "IT"
+Application: ""
+Compliance: ""
+DataClassification: "internal"
+ContactEmail: "tuxtum@example.com"

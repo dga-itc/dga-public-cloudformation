@@ -1,0 +1,86 @@
+[
+  {
+    "ParameterKey": "ProjectName",
+    "ParameterValue": "tuxtum"
+  },
+  {
+    "ParameterKey": "Environment",
+    "ParameterValue": "uat"
+  },
+  {
+    "ParameterKey": "UniqueStackName",
+    "ParameterValue": "kuma-service"
+  },
+  {
+    "ParameterKey": "VPCStackUniqueName",
+    "ParameterValue": "main-vpc"
+  },
+  {
+    "ParameterKey": "ECSClusterStackUniqueName",
+    "ParameterValue": "main-cluster"
+  },
+  {
+    "ParameterKey": "IAMRolesStackUniqueName",
+    "ParameterValue": "iam-ecs-roles"
+  },
+  {
+    "ParameterKey": "ALBStackUniqueName",
+    "ParameterValue": "main-alb"
+  },
+  {
+    "ParameterKey": "EFSStackUniqueName",
+    "ParameterValue": "main-efs"
+  },
+  {
+    "ParameterKey": "ContainerName",
+    "ParameterValue": "uptime-kuma"
+  },
+  {
+    "ParameterKey": "ContainerImage",
+    "ParameterValue": "louislam/uptime-kuma:1"
+  },
+  {
+    "ParameterKey": "ContainerPort",
+    "ParameterValue": "3001"
+  },
+  {
+    "ParameterKey": "ContainerCpu",
+    "ParameterValue": "512"
+  },
+  {
+    "ParameterKey": "ContainerMemory",
+    "ParameterValue": "1024"
+  },
+  {
+    "ParameterKey": "DesiredCount",
+    "ParameterValue": "1"
+  },
+  {
+    "ParameterKey": "EFSMountPath",
+    "ParameterValue": "/app/data"
+  },
+  {
+    "ParameterKey": "ContainerUser",
+    "ParameterValue": "0"
+  },
+  {
+    "ParameterKey": "HealthCheckMatcher",
+    "ParameterValue": "200"
+  },
+  {
+    "ParameterKey": "DomainName",
+    "ParameterValue": "tuxtum-uat-kuma.superapps-th.cloud"
+  },
+  {
+    "ParameterKey": "PathPattern",
+    "ParameterValue": "/*"
+  },
+  {
+    "ParameterKey": "CostCenter",
+    "ParameterValue": "IT"
+  },
+  {
+    "ParameterKey": "ListenerRulePriority",
+    "ParameterValue": "110"
+  }
+]

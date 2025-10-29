@@ -1,0 +1,1136 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Advanced VPC Stack v1.2 - Added VPC Flow Logs and VPC Endpoints'
+
+Metadata:
+  Version: "v1.2"
+  LastUpdated: "2025-01-26"
+  BreakingChanges: "Added Flow Logs and VPC Endpoints features"
+  UpgradeFrom: "v1.1"
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "Project Information"
+        Parameters:
+          - ProjectName
+          - Environment
+          - UniqueStackName
+          - CostCenter
+      - Label:
+          default: "VPC CIDR Configuration"
+        Parameters:
+          - VpcCidr
+          - SecondaryCidr
+      - Label:
+          default: "Public Subnets"
+        Parameters:
+          - PublicSubnet1Cidr
+          - PublicSubnet2Cidr
+          - PublicSubnet3Cidr
+      - Label:
+          default: "Private Subnets"
+        Parameters:
+          - PrivateSubnet1Cidr
+          - PrivateSubnet2Cidr
+          - PrivateSubnet3Cidr
+      - Label:
+          default: "Container Subnets"
+        Parameters:
+          - ContainerSubnet1Cidr
+          - ContainerSubnet2Cidr
+      - Label:
+          default: "Database Subnets"
+        Parameters:
+          - DatabaseSubnet1Cidr
+          - DatabaseSubnet2Cidr
+          - DatabaseSubnet3Cidr
+      - Label:
+          default: "Network Configuration"
+        Parameters:
+          - AvailabilityZone1
+          - AvailabilityZone2
+          - AvailabilityZone3
+      - Label:
+          default: "Stack Dependencies"
+        Parameters:
+          - EIPExportStack
+      - Label:
+          default: "VPC Flow Logs Configuration"
+        Parameters:
+          - EnableFlowLogs
+          - FlowLogsDestination
+          - FlowLogsRetentionDays
+          - EnableS3FlowLogs
+          - S3FlowLogsBucket
+          - S3FlowLogsPrefix
+          - CrossAccountLoggingId
+      - Label:
+          default: "VPC Endpoints Configuration"
+        Parameters:
+          - EnableVPCEndpoints
+          - EnableS3Endpoint
+          - EnableDynamoDBEndpoint
+          - EnableECREndpoints
+          - EnableLogsEndpoint
+      - Label:
+          default: "Import Configuration"
+        Parameters:
+          - EIPImportMode
+          - EIP1AllocationId
+          - EIP2AllocationId
+    ParameterLabels:
+      ProjectName:
+        default: "Project Name"
+      Environment:
+        default: "Environment"
+      UniqueStackName:
+        default: "Stack Identifier"
+      CostCenter:
+        default: "Cost Center"
+      VpcCidr:
+        default: "VPC CIDR Block"
+      SecondaryCidr:
+        default: "Secondary CIDR Block"
+      AvailabilityZone1:
+        default: "Availability Zone 1"
+      AvailabilityZone2:
+        default: "Availability Zone 2"
+      AvailabilityZone3:
+        default: "Availability Zone 3"
+      PublicSubnet1Cidr:
+        default: "Public Subnet 1 CIDR"
+      PublicSubnet2Cidr:
+        default: "Public Subnet 2 CIDR"
+      PublicSubnet3Cidr:
+        default: "Public Subnet 3 CIDR"
+      PrivateSubnet1Cidr:
+        default: "Private Subnet 1 CIDR"
+      PrivateSubnet2Cidr:
+        default: "Private Subnet 2 CIDR"
+      PrivateSubnet3Cidr:
+        default: "Private Subnet 3 CIDR"
+      DatabaseSubnet1Cidr:
+        default: "Database Subnet 1 CIDR"
+      DatabaseSubnet2Cidr:
+        default: "Database Subnet 2 CIDR"
+      DatabaseSubnet3Cidr:
+        default: "Database Subnet 3 CIDR"
+      EIPExportStack:
+        default: "EIP Export Stack Name"
+      EIPImportMode:
+        default: "EIP Import Mode"
+      EIP1AllocationId:
+        default: "EIP 1 Allocation ID"
+      EIP2AllocationId:
+        default: "EIP 2 Allocation ID"
+      EnableFlowLogs:
+        default: "Enable VPC Flow Logs"
+      FlowLogsDestination:
+        default: "Flow Logs Destination"
+      FlowLogsRetentionDays:
+        default: "Flow Logs Retention Days"
+      EnableS3FlowLogs:
+        default: "Enable S3 Flow Logs"
+      S3FlowLogsBucket:
+        default: "S3 Flow Logs Bucket"
+      S3FlowLogsPrefix:
+        default: "S3 Flow Logs Prefix"
+      CrossAccountLoggingId:
+        default: "Cross-Account Logging ID"
+      EnableVPCEndpoints:
+        default: "Enable VPC Endpoints"
+      EnableS3Endpoint:
+        default: "Enable S3 Endpoint"
+      EnableDynamoDBEndpoint:
+        default: "Enable DynamoDB Endpoint"
+      EnableECREndpoints:
+        default: "Enable ECR Endpoints"
+      EnableLogsEndpoint:
+        default: "Enable CloudWatch Logs Endpoint"
+      ResourceDeletionPolicy:
+        default: "Resource Deletion Policy"
+      ResourceUpdateReplacePolicy:
+        default: "Resource Update Replace Policy"
+
+Parameters:
+  ProjectName:
+    Type: String
+    Description: "Project identifier"
+  
+  Environment:
+    Type: String
+    Description: "Environment identifier"
+    AllowedValues: ["dev", "sit", "uat", "pvt", "pre-prod", "prod"]
+  
+  UniqueStackName:
+    Type: String
+    Description: "Unique identifier for this stack"
+    Default: "main-vpc"
+  
+  EIPExportStack:
+    Type: String
+    Description: "EIP stack name to import from"
+    Default: "lab-iac-prod-main-eip"
+  
+  EIPImportMode:
+    Type: String
+    Description: "How to get EIP AllocationIds"
+    AllowedValues: ["AUTO", "MANUAL"]
+    Default: "AUTO"
+  
+  EIP1AllocationId:
+    Type: String
+    Description: "EIP 1 Allocation ID (only if EIPImportMode=MANUAL)"
+    Default: ""
+  
+  EIP2AllocationId:
+    Type: String
+    Description: "EIP 2 Allocation ID (only if EIPImportMode=MANUAL)"
+    Default: ""
+
+  # VPC Flow Logs Configuration
+  EnableFlowLogs:
+    Type: String
+    Description: "Enable VPC Flow Logs (Update requires: No interruption)"
+    AllowedValues: ["true", "false"]
+    Default: "true"
+
+  FlowLogsDestination:
+    Type: String
+    Description: "Flow Logs destination (Update requires: No interruption)"
+    AllowedValues: ["CLOUDWATCH", "S3"]
+    Default: "CLOUDWATCH"
+
+  FlowLogsRetentionDays:
+    Type: Number
+    Description: "Flow Logs retention in days (Update requires: No interruption)"
+    AllowedValues: [1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1827, 3653]
+    Default: 14
+
+  # S3 Flow Logs Configuration
+  EnableS3FlowLogs:
+    Type: String
+    Description: "Enable additional S3 Flow Logs for long-term storage (Update requires: No interruption)"
+    AllowedValues: ["true", "false"]
+    Default: "false"
+
+  S3FlowLogsBucket:
+    Type: String
+    Description: "S3 bucket name for Flow Logs (Update requires: No interruption)"
+    Default: ""
+
+  S3FlowLogsPrefix:
+    Type: String
+    Description: "S3 prefix for Flow Logs organization (Update requires: No interruption)"
+    Default: "vpc-flowlogs"
+
+  CrossAccountLoggingId:
+    Type: String
+    Description: "Cross-account logging account ID (leave empty for same account) (Update requires: No interruption)"
+    Default: ""
+
+  # VPC Endpoints Configuration
+  EnableVPCEndpoints:
+    Type: String
+    Description: "Enable VPC Endpoints for cost optimization (Update requires: No interruption)"
+    AllowedValues: ["true", "false"]
+    Default: "true"
+
+  EnableS3Endpoint:
+    Type: String
+    Description: "Enable S3 Gateway Endpoint (Update requires: No interruption)"
+    AllowedValues: ["true", "false"]
+    Default: "true"
+
+  EnableDynamoDBEndpoint:
+    Type: String
+    Description: "Enable DynamoDB Gateway Endpoint (Update requires: No interruption)"
+    AllowedValues: ["true", "false"]
+    Default: "true"
+
+  EnableECREndpoints:
+    Type: String
+    Description: "Enable ECR Interface Endpoints (Update requires: No interruption)"
+    AllowedValues: ["true", "false"]
+    Default: "true"
+
+  EnableLogsEndpoint:
+    Type: String
+    Description: "Enable CloudWatch Logs Interface Endpoint (Update requires: No interruption)"
+    AllowedValues: ["true", "false"]
+    Default: "true"
+  
+  VpcCidr:
+    Type: String
+    Default: "10.0.0.0/24"
+    Description: "Primary CIDR block for VPC"
+  
+  SecondaryCidr:
+    Type: String
+    Default: "100.64.0.0/16"
+    Description: "Secondary CIDR block for container/database subnets"
+  
+  PublicSubnet1Cidr:
+    Type: String
+    Default: "10.0.0.0/26"
+    Description: "CIDR block for public subnet 1"
+  
+  PublicSubnet2Cidr:
+    Type: String
+    Default: "10.0.0.64/26"
+    Description: "CIDR block for public subnet 2"
+  
+  PrivateSubnet1Cidr:
+    Type: String
+    Default: "10.0.0.128/26"
+    Description: "CIDR block for private subnet 1"
+  
+  PrivateSubnet2Cidr:
+    Type: String
+    Default: "10.0.0.192/26"
+    Description: "CIDR block for private subnet 2"
+
+  ContainerSubnet1Cidr:
+    Type: String
+    Default: "100.64.0.0/19"
+    Description: "CIDR block for container subnet 1"
+  
+  ContainerSubnet2Cidr:
+    Type: String
+    Default: "100.64.32.0/19"
+    Description: "CIDR block for container subnet 2"
+
+  DatabaseSubnet1Cidr:
+    Type: String
+    Default: "100.64.64.0/19"
+    Description: "CIDR block for database subnet 1"
+  
+  DatabaseSubnet2Cidr:
+    Type: String
+    Default: "100.64.96.0/19"
+    Description: "CIDR block for database subnet 2"
+
+  DatabaseSubnet3Cidr:
+    Type: String
+    Default: "100.64.128.0/19"
+    Description: "CIDR block for database subnet 3"
+
+  CostCenter:
+    Type: String
+    Description: "Cost center for billing"
+    Default: "IT"
+  ResourceDeletionPolicy:
+    Type: String
+    Description: "Resource deletion policy on stack deletion (Update requires: No interruption)"
+    AllowedValues: ["Delete", "Retain", "Snapshot"]
+    Default: "Delete"
+  
+  ResourceUpdateReplacePolicy:
+    Type: String
+    Description: "Resource update replacement policy during updates (Update requires: No interruption)"
+    AllowedValues: ["Delete", "Retain", "Snapshot"]
+    Default: "Delete"
+
+
+Conditions:
+  UseManualEIP: !Equals [!Ref EIPImportMode, "MANUAL"]
+  ShouldEnableFlowLogs: !Equals [!Ref EnableFlowLogs, "true"]
+  UseCloudWatchFlowLogs: !Equals [!Ref FlowLogsDestination, "CLOUDWATCH"]
+  ShouldEnableS3FlowLogs: !Equals [!Ref EnableS3FlowLogs, "true"]
+  HasS3Bucket: !Not [!Equals [!Ref S3FlowLogsBucket, ""]]
+  UseCrossAccountS3: !Not [!Equals [!Ref CrossAccountLoggingId, ""]]
+  ShouldEnableVPCEndpoints: !Equals [!Ref EnableVPCEndpoints, "true"]
+  ShouldEnableS3Endpoint: !And [!Condition ShouldEnableVPCEndpoints, !Equals [!Ref EnableS3Endpoint, "true"]]
+  ShouldEnableDynamoDBEndpoint: !And [!Condition ShouldEnableVPCEndpoints, !Equals [!Ref EnableDynamoDBEndpoint, "true"]]
+  ShouldEnableECREndpoints: !And [!Condition ShouldEnableVPCEndpoints, !Equals [!Ref EnableECREndpoints, "true"]]
+  ShouldEnableLogsEndpoint: !And [!Condition ShouldEnableVPCEndpoints, !Equals [!Ref EnableLogsEndpoint, "true"]]
+
+Resources:
+  # VPC
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcCidr
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}"
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: CostCenter
+          Value: !Ref CostCenter
+
+  # Secondary CIDR
+  SecondaryCidrBlock:
+    Type: AWS::EC2::VPCCidrBlock
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !Ref SecondaryCidr
+
+  # Internet Gateway
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-igw"
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: CostCenter
+          Value: !Ref CostCenter
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: CostCenter
+          Value: !Ref CostCenter
+
+  AttachGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+
+  # Public Subnets
+  PublicSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !Ref PublicSubnet1Cidr
+      AvailabilityZone: !Select [0, !GetAZs '']
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-public-1"
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: CostCenter
+          Value: !Ref CostCenter
+
+  PublicSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !Ref PublicSubnet2Cidr
+      AvailabilityZone: !Select [1, !GetAZs '']
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-public-2"
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: CostCenter
+          Value: !Ref CostCenter
+
+  # Private Subnets
+  PrivateSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !Ref PrivateSubnet1Cidr
+      AvailabilityZone: !Select [0, !GetAZs '']
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-private-1"
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: CostCenter
+          Value: !Ref CostCenter
+
+  PrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !Ref PrivateSubnet2Cidr
+      AvailabilityZone: !Select [1, !GetAZs '']
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-private-2"
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: CostCenter
+          Value: !Ref CostCenter
+
+  # Container Subnets (Secondary CIDR)
+  ContainerSubnet1:
+    Type: AWS::EC2::Subnet
+    DependsOn: SecondaryCidrBlock
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !Ref ContainerSubnet1Cidr
+      AvailabilityZone: !Select [0, !GetAZs '']
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-container-1"
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: CostCenter
+          Value: !Ref CostCenter
+
+  ContainerSubnet2:
+    Type: AWS::EC2::Subnet
+    DependsOn: SecondaryCidrBlock
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !Ref ContainerSubnet2Cidr
+      AvailabilityZone: !Select [1, !GetAZs '']
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-container-2"
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: CostCenter
+          Value: !Ref CostCenter
+
+  # Database Subnets (Secondary CIDR, 3 AZ)
+  DatabaseSubnet1:
+    Type: AWS::EC2::Subnet
+    DependsOn: SecondaryCidrBlock
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !Ref DatabaseSubnet1Cidr
+      AvailabilityZone: !Select [0, !GetAZs '']
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-database-1"
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: CostCenter
+          Value: !Ref CostCenter
+
+  DatabaseSubnet2:
+    Type: AWS::EC2::Subnet
+    DependsOn: SecondaryCidrBlock
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !Ref DatabaseSubnet2Cidr
+      AvailabilityZone: !Select [1, !GetAZs '']
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-database-2"
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: CostCenter
+          Value: !Ref CostCenter
+
+  DatabaseSubnet3:
+    Type: AWS::EC2::Subnet
+    DependsOn: SecondaryCidrBlock
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !Ref DatabaseSubnet3Cidr
+      AvailabilityZone: !Select [2, !GetAZs '']
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-database-3"
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: CostCenter
+          Value: !Ref CostCenter
+
+  # ==========================================
+  # VPC Flow Logs
+  # ==========================================
+  FlowLogsRole:
+    Type: AWS::IAM::Role
+    Condition: ShouldEnableFlowLogs
+    DeletionPolicy: !Ref ResourceDeletionPolicy
+    UpdateReplacePolicy: !Ref ResourceUpdateReplacePolicy
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: vpc-flow-logs.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: FlowLogsDeliveryRolePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                  - logs:DescribeLogGroups
+                  - logs:DescribeLogStreams
+                Resource: '*'
+
+  FlowLogsLogGroup:
+    Type: AWS::Logs::LogGroup
+    Condition: UseCloudWatchFlowLogs
+    DeletionPolicy: !Ref ResourceDeletionPolicy
+    UpdateReplacePolicy: !Ref ResourceUpdateReplacePolicy
+    Properties:
+      LogGroupName: !Sub "/aws/vpc/flowlogs/${ProjectName}-${Environment}-${UniqueStackName}"
+      RetentionInDays: !Ref FlowLogsRetentionDays
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-flowlogs"
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: CostCenter
+          Value: !Ref CostCenter
+
+  VPCFlowLog:
+    Type: AWS::EC2::FlowLog
+    Condition: ShouldEnableFlowLogs
+    Properties:
+      ResourceType: VPC
+      ResourceId: !Ref VPC
+      TrafficType: ALL
+      LogDestinationType: !If
+        - UseCloudWatchFlowLogs
+        - cloud-watch-logs
+        - s3
+      LogDestination: !If
+        - UseCloudWatchFlowLogs
+        - !GetAtt FlowLogsLogGroup.Arn
+        - !Sub "arn:aws:s3:::${ProjectName}-${Environment}-vpc-flowlogs"
+      DeliverLogsPermissionArn: !If
+        - UseCloudWatchFlowLogs
+        - !GetAtt FlowLogsRole.Arn
+        - !Ref "AWS::NoValue"
+      LogFormat: "${srcaddr} ${dstaddr} ${srcport} ${dstport} ${protocol} ${packets} ${bytes} ${windowstart} ${windowend} ${action}"
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-flowlog"
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: CostCenter
+          Value: !Ref CostCenter
+
+  # S3 Flow Logs (Additional/Long-term)
+  S3FlowLog:
+    Type: AWS::EC2::FlowLog
+    Condition: ShouldEnableS3FlowLogs
+    Properties:
+      ResourceType: VPC
+      ResourceId: !Ref VPC
+      TrafficType: ALL
+      LogDestinationType: s3
+      LogDestination: !If
+        - UseCrossAccountS3
+        - !Sub "arn:aws:s3:::${S3FlowLogsBucket}/${S3FlowLogsPrefix}/account-id=${AWS::AccountId}/vpc-id=${VPC}/"
+        - !If
+          - HasS3Bucket
+          - !Sub "arn:aws:s3:::${S3FlowLogsBucket}/${S3FlowLogsPrefix}/"
+          - !Sub "arn:aws:s3:::${ProjectName}-${Environment}-${UniqueStackName}-flowlogs/${S3FlowLogsPrefix}/"
+      LogFormat: "${account-id} ${interface-id} ${srcaddr} ${dstaddr} ${srcport} ${dstport} ${protocol} ${packets} ${bytes} ${windowstart} ${windowend} ${action} ${flowlogstatus} ${vpc-id} ${subnet-id} ${region} ${az-id}"
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-s3-flowlog"
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: CostCenter
+          Value: !Ref CostCenter
+        - Key: Purpose
+          Value: "Long-term-storage"
+
+  # ==========================================
+  # NAT Gateways
+  # ==========================================
+  NATGateway1:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !If
+        - UseManualEIP
+        - !Ref EIP1AllocationId
+        - !ImportValue
+            Fn::Sub: '${EIPExportStack}-EIP1-AllocationId'
+      SubnetId: !Ref PublicSubnet1
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-nat-gw-1"
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: CostCenter
+          Value: !Ref CostCenter
+
+  NATGateway2:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !If
+        - UseManualEIP
+        - !Ref EIP2AllocationId
+        - !ImportValue
+            Fn::Sub: '${EIPExportStack}-EIP2-AllocationId'
+      SubnetId: !Ref PublicSubnet2
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-nat-gw-2"
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: CostCenter
+          Value: !Ref CostCenter
+
+  # Route Tables
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-public-rt"
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: CostCenter
+          Value: !Ref CostCenter
+
+  PrivateRouteTable1:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-private-rt-1"
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: CostCenter
+          Value: !Ref CostCenter
+
+  PrivateRouteTable2:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-private-rt-2"
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: CostCenter
+          Value: !Ref CostCenter
+
+  ContainerRouteTable1:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-container-rt-1"
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: CostCenter
+          Value: !Ref CostCenter
+
+  ContainerRouteTable2:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-container-rt-2"
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: CostCenter
+          Value: !Ref CostCenter
+
+  DatabaseRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-database-rt"
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: CostCenter
+          Value: !Ref CostCenter
+
+  # Routes
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: AttachGateway
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  PrivateRoute1:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable1
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NATGateway1
+
+  PrivateRoute2:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable2
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NATGateway2
+
+  ContainerRoute1:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref ContainerRouteTable1
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NATGateway1
+
+  ContainerRoute2:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref ContainerRouteTable2
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NATGateway2
+
+  DatabaseRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref DatabaseRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NATGateway1
+
+  # Route Table Associations - Public
+  PublicSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet1
+      RouteTableId: !Ref PublicRouteTable
+
+  PublicSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet2
+      RouteTableId: !Ref PublicRouteTable
+
+  # Route Table Associations - Private (AZ1 ใช้ NAT1, AZ2 ใช้ NAT2)
+  PrivateSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet1
+      RouteTableId: !Ref PrivateRouteTable1
+
+  PrivateSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet2
+      RouteTableId: !Ref PrivateRouteTable2
+
+  ContainerSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref ContainerSubnet1
+      RouteTableId: !Ref ContainerRouteTable1
+
+  ContainerSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref ContainerSubnet2
+      RouteTableId: !Ref ContainerRouteTable2
+
+  # Database Subnets ใช้ Database Route Table ตัวเดียว ออก NAT Gateway 1
+  DatabaseSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref DatabaseSubnet1
+      RouteTableId: !Ref DatabaseRouteTable
+
+  DatabaseSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref DatabaseSubnet2
+      RouteTableId: !Ref DatabaseRouteTable
+
+  DatabaseSubnet3RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref DatabaseSubnet3
+      RouteTableId: !Ref DatabaseRouteTable
+
+  # ==========================================
+  # VPC Endpoints
+  # ==========================================
+  # Security Group for Interface Endpoints
+  VPCEndpointSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Condition: ShouldEnableVPCEndpoints
+    DeletionPolicy: !Ref ResourceDeletionPolicy
+    UpdateReplacePolicy: !Ref ResourceUpdateReplacePolicy
+    Properties:
+      GroupDescription: "Security group for VPC Interface Endpoints"
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: !Ref VpcCidr
+          Description: "HTTPS from VPC"
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: !Ref SecondaryCidr
+          Description: "HTTPS from Secondary CIDR"
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-vpce-sg"
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: CostCenter
+          Value: !Ref CostCenter
+
+  # S3 Gateway Endpoint
+  S3Endpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Condition: ShouldEnableS3Endpoint
+    Properties:
+      VpcId: !Ref VPC
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.s3"
+      VpcEndpointType: Gateway
+      RouteTableIds:
+        - !Ref PrivateRouteTable1
+        - !Ref PrivateRouteTable2
+        - !Ref ContainerRouteTable1
+        - !Ref ContainerRouteTable2
+        - !Ref DatabaseRouteTable
+
+  # DynamoDB Gateway Endpoint
+  DynamoDBEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Condition: ShouldEnableDynamoDBEndpoint
+    Properties:
+      VpcId: !Ref VPC
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.dynamodb"
+      VpcEndpointType: Gateway
+      RouteTableIds:
+        - !Ref PrivateRouteTable1
+        - !Ref PrivateRouteTable2
+        - !Ref ContainerRouteTable1
+        - !Ref ContainerRouteTable2
+        - !Ref DatabaseRouteTable
+
+  # ECR API Interface Endpoint
+  ECRAPIEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Condition: ShouldEnableECREndpoints
+    Properties:
+      VpcId: !Ref VPC
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.ecr.api"
+      VpcEndpointType: Interface
+      SubnetIds:
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+      SecurityGroupIds:
+        - !Ref VPCEndpointSecurityGroup
+      PrivateDnsEnabled: true
+
+  # ECR Docker Interface Endpoint
+  ECRDockerEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Condition: ShouldEnableECREndpoints
+    Properties:
+      VpcId: !Ref VPC
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.ecr.dkr"
+      VpcEndpointType: Interface
+      SubnetIds:
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+      SecurityGroupIds:
+        - !Ref VPCEndpointSecurityGroup
+      PrivateDnsEnabled: true
+
+  # CloudWatch Logs Interface Endpoint
+  LogsEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Condition: ShouldEnableLogsEndpoint
+    Properties:
+      VpcId: !Ref VPC
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.logs"
+      VpcEndpointType: Interface
+      SubnetIds:
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+      SecurityGroupIds:
+        - !Ref VPCEndpointSecurityGroup
+      PrivateDnsEnabled: true
+
+Outputs:
+  VPCId:
+    Description: VPC ID
+    Value: !Ref VPC
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-${UniqueStackName}-Id'
+
+  PublicSubnet1Id:
+    Description: Public Subnet 1 ID
+    Value: !Ref PublicSubnet1
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-${UniqueStackName}-PublicSubnet1-Id'
+
+  PublicSubnet2Id:
+    Description: Public Subnet 2 ID
+    Value: !Ref PublicSubnet2
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-${UniqueStackName}-PublicSubnet2-Id'
+
+  PrivateSubnet1Id:
+    Description: Private Subnet 1 ID
+    Value: !Ref PrivateSubnet1
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-${UniqueStackName}-PrivateSubnet1-Id'
+
+  PrivateSubnet2Id:
+    Description: Private Subnet 2 ID
+    Value: !Ref PrivateSubnet2
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-${UniqueStackName}-PrivateSubnet2-Id'
+
+  ContainerSubnet1Id:
+    Description: Container Subnet 1 ID
+    Value: !Ref ContainerSubnet1
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-${UniqueStackName}-ContainerSubnet1-Id'
+
+  ContainerSubnet2Id:
+    Description: Container Subnet 2 ID
+    Value: !Ref ContainerSubnet2
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-${UniqueStackName}-ContainerSubnet2-Id'
+
+  DatabaseSubnet1Id:
+    Description: Database Subnet 1 ID
+    Value: !Ref DatabaseSubnet1
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-${UniqueStackName}-DatabaseSubnet1-Id'
+
+  DatabaseSubnet2Id:
+    Description: Database Subnet 2 ID
+    Value: !Ref DatabaseSubnet2
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-${UniqueStackName}-DatabaseSubnet2-Id'
+
+  DatabaseSubnet3Id:
+    Description: Database Subnet 3 ID
+    Value: !Ref DatabaseSubnet3
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-${UniqueStackName}-DatabaseSubnet3-Id'
+
+  NATGateway1Id:
+    Description: NAT Gateway 1 ID
+    Value: !Ref NATGateway1
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-${UniqueStackName}-NATGateway1-Id'
+
+  NATGateway2Id:
+    Description: NAT Gateway 2 ID
+    Value: !Ref NATGateway2
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-${UniqueStackName}-NATGateway2-Id'
+
+  # Flow Logs Outputs
+  FlowLogsLogGroupArn:
+    Condition: UseCloudWatchFlowLogs
+    Description: "VPC Flow Logs CloudWatch Log Group ARN"
+    Value: !GetAtt FlowLogsLogGroup.Arn
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-FlowLogs-LogGroup-Arn"
+
+  VPCFlowLogId:
+    Condition: ShouldEnableFlowLogs
+    Description: "VPC Flow Log ID"
+    Value: !Ref VPCFlowLog
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-FlowLog-Id"
+
+  S3FlowLogId:
+    Condition: ShouldEnableS3FlowLogs
+    Description: "S3 VPC Flow Log ID"
+    Value: !Ref S3FlowLog
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-S3-FlowLog-Id"
+
+  S3FlowLogDestination:
+    Condition: ShouldEnableS3FlowLogs
+    Description: "S3 Flow Log Destination"
+    Value: !If
+      - UseCrossAccountS3
+      - !Sub "arn:aws:s3:::${S3FlowLogsBucket}/${S3FlowLogsPrefix}/account-id=${AWS::AccountId}/vpc-id=${VPC}/"
+      - !If
+        - HasS3Bucket
+        - !Sub "arn:aws:s3:::${S3FlowLogsBucket}/${S3FlowLogsPrefix}/"
+        - !Sub "arn:aws:s3:::${ProjectName}-${Environment}-${UniqueStackName}-flowlogs/${S3FlowLogsPrefix}/"
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-S3-FlowLog-Destination"
+
+  # VPC Endpoints Outputs
+  S3EndpointId:
+    Condition: ShouldEnableS3Endpoint
+    Description: "S3 VPC Endpoint ID"
+    Value: !Ref S3Endpoint
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-S3-Endpoint-Id"
+
+  DynamoDBEndpointId:
+    Condition: ShouldEnableDynamoDBEndpoint
+    Description: "DynamoDB VPC Endpoint ID"
+    Value: !Ref DynamoDBEndpoint
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-DynamoDB-Endpoint-Id"
+
+  ECRAPIEndpointId:
+    Condition: ShouldEnableECREndpoints
+    Description: "ECR API VPC Endpoint ID"
+    Value: !Ref ECRAPIEndpoint
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-ECR-API-Endpoint-Id"
+
+  LogsEndpointId:
+    Condition: ShouldEnableLogsEndpoint
+    Description: "CloudWatch Logs VPC Endpoint ID"
+    Value: !Ref LogsEndpoint
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-Logs-Endpoint-Id"
+
+  StackName:
+    Description: "Stack Name for cross-stack references"
+    Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}"
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-${UniqueStackName}"

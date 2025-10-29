@@ -1,0 +1,61 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'API Gateway VPC Link V1 for REST API'
+
+Parameters:
+  ProjectName:
+    Type: String
+    Description: "Project identifier"
+  
+  Environment:
+    Type: String
+    Description: "Environment identifier"
+    AllowedValues: ["dev", "sit", "uat", "pvt", "pre-prod", "prod"]
+  
+  UniqueStackName:
+    Type: String
+    Description: "Unique identifier for this stack"
+    Default: "apigw-vpc-link-v1"
+
+  # Stack Dependencies
+  NLBExportStack:
+    Type: String
+    Description: "NLB stack name to import from"
+    Default: "lab-iac-prod-nlb-private"
+
+  # Required Tags
+  CostCenter:
+    Type: String
+    Description: "Cost center for billing"
+
+Resources:
+  # VPC Link V1 (for REST API)
+  VPCLink:
+    Type: AWS::ApiGateway::VpcLink
+    Properties:
+      Name: !Sub "${ProjectName}-${Environment}-${UniqueStackName}"
+      Description: !Sub "VPC Link for ${ProjectName} ${Environment} REST API"
+      TargetArns:
+        - !ImportValue
+            Fn::Sub: '${NLBExportStack}-Arn'
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}"
+
+Outputs:
+  VPCLinkId:
+    Description: VPC Link ID
+    Value: !Ref VPCLink
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-${UniqueStackName}-Id'
+
+  VPCLinkName:
+    Description: VPC Link Name
+    Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}"
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-${UniqueStackName}-Name'
+
+  StackName:
+    Description: "Stack Name for cross-stack references"
+    Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}"
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-${UniqueStackName}"

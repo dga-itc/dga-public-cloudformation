@@ -1,0 +1,388 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'CloudFront Distribution Stack v1.1 - With WAF support and ALB origin'
+
+Metadata:
+  Version: "v1.1"
+  LastUpdated: "2025-01-25"
+  Purpose: "CloudFront distribution with optional WAF association"
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "Project Information"
+        Parameters:
+          - ProjectName
+          - Environment
+          - UniqueStackName
+          - CostCenter
+      - Label:
+          default: "Origin Configuration"
+        Parameters:
+          - OriginDomainName
+          - OriginPath
+          - OriginProtocolPolicy
+      - Label:
+          default: "Distribution Configuration"
+        Parameters:
+          - PriceClass
+          - DefaultTTL
+          - MaxTTL
+          - MinTTL
+          - ViewerProtocolPolicy
+      - Label:
+          default: "Custom Domain Configuration"
+        Parameters:
+          - EnableCustomDomain
+          - CustomDomainName
+          - CertificateArn
+      - Label:
+          default: "WAF Configuration"
+        Parameters:
+          - EnableWAF
+          - WAFImportMode
+          - WAFExportStack
+          - WAFWebACLId
+      - Label:
+          default: "Stack Dependencies"
+        Parameters:
+          - ALBExportStack
+      - Label:
+          default: "Resource Policies"
+        Parameters:
+          - ResourceDeletionPolicy
+          - ResourceUpdateReplacePolicy
+    ParameterLabels:
+      ProjectName:
+        default: "Project Name"
+      Environment:
+        default: "Environment"
+      UniqueStackName:
+        default: "Stack Identifier"
+      CostCenter:
+        default: "Cost Center"
+      OriginDomainName:
+        default: "Origin Domain Name"
+      OriginPath:
+        default: "Origin Path"
+      OriginProtocolPolicy:
+        default: "Origin Protocol Policy"
+      PriceClass:
+        default: "Price Class"
+      DefaultTTL:
+        default: "Default TTL"
+      MaxTTL:
+        default: "Maximum TTL"
+      MinTTL:
+        default: "Minimum TTL"
+      ViewerProtocolPolicy:
+        default: "Viewer Protocol Policy"
+      EnableCustomDomain:
+        default: "Enable Custom Domain"
+      CustomDomainName:
+        default: "Custom Domain Name"
+      CertificateArn:
+        default: "SSL Certificate ARN"
+      EnableWAF:
+        default: "Enable WAF Protection"
+      WAFImportMode:
+        default: "WAF Import Mode"
+      WAFExportStack:
+        default: "WAF Export Stack Name"
+      WAFWebACLId:
+        default: "WAF WebACL ID"
+      ALBExportStack:
+        default: "ALB Export Stack Name"
+      ResourceDeletionPolicy:
+        default: "Resource Deletion Policy"
+      ResourceUpdateReplacePolicy:
+        default: "Resource Update Replace Policy"
+
+Parameters:
+  ProjectName:
+    Type: String
+    Description: "Project identifier (Update requires: Replacement - changes resource names)"
+  
+  Environment:
+    Type: String
+    Description: "Environment identifier (Update requires: Replacement - changes resource names)"
+    AllowedValues: ["dev", "sit", "uat", "pvt", "pre-prod", "prod"]
+  
+  UniqueStackName:
+    Type: String
+    Description: "Unique identifier for this stack (Update requires: Replacement - changes resource names)"
+    Default: "cloudfront"
+  
+  CostCenter:
+    Type: String
+    Description: "Cost center for billing (Update requires: No interruption)"
+    Default: "IT"
+
+  # Origin Configuration
+  OriginDomainName:
+    Type: String
+    Description: "Origin domain name (ALB DNS name or custom domain) (Update requires: No interruption)"
+    Default: ""
+
+  OriginPath:
+    Type: String
+    Description: "Origin path prefix (Update requires: No interruption)"
+    Default: ""
+
+  OriginProtocolPolicy:
+    Type: String
+    Description: "Protocol policy for origin requests (Update requires: No interruption)"
+    AllowedValues: ["http-only", "https-only", "match-viewer"]
+    Default: "https-only"
+
+  # Distribution Configuration
+  PriceClass:
+    Type: String
+    Description: "CloudFront price class (Update requires: No interruption)"
+    AllowedValues: ["PriceClass_All", "PriceClass_200", "PriceClass_100"]
+    Default: "PriceClass_100"
+
+  DefaultTTL:
+    Type: Number
+    Description: "Default TTL in seconds (Update requires: No interruption)"
+    Default: 86400
+    MinValue: 0
+    MaxValue: 31536000
+
+  MaxTTL:
+    Type: Number
+    Description: "Maximum TTL in seconds (Update requires: No interruption)"
+    Default: 31536000
+    MinValue: 0
+    MaxValue: 31536000
+
+  MinTTL:
+    Type: Number
+    Description: "Minimum TTL in seconds (Update requires: No interruption)"
+    Default: 0
+    MinValue: 0
+    MaxValue: 31536000
+
+  ViewerProtocolPolicy:
+    Type: String
+    Description: "Viewer protocol policy (Update requires: No interruption)"
+    AllowedValues: ["allow-all", "https-only", "redirect-to-https"]
+    Default: "redirect-to-https"
+
+  # Custom Domain Configuration
+  EnableCustomDomain:
+    Type: String
+    Description: "Enable custom domain name (Update requires: No interruption)"
+    AllowedValues: ["true", "false"]
+    Default: "false"
+
+  CustomDomainName:
+    Type: String
+    Description: "Custom domain name (only if EnableCustomDomain=true) (Update requires: No interruption)"
+    Default: ""
+
+  CertificateArn:
+    Type: String
+    Description: "SSL certificate ARN in us-east-1 (only if EnableCustomDomain=true) (Update requires: No interruption)"
+    Default: ""
+
+  # WAF Configuration
+  EnableWAF:
+    Type: String
+    Description: "Enable WAF protection (Update requires: No interruption)"
+    AllowedValues: ["true", "false"]
+    Default: "true"
+
+  WAFImportMode:
+    Type: String
+    Description: "How to get WAF WebACL ID (Update requires: No interruption)"
+    AllowedValues: ["AUTO", "MANUAL"]
+    Default: "AUTO"
+
+  WAFExportStack:
+    Type: String
+    Description: "WAF stack name to import from (only if WAFImportMode=AUTO) (Update requires: No interruption)"
+    Default: "nsf-lotto-prod-waf"
+
+  WAFWebACLId:
+    Type: String
+    Description: "WAF WebACL ID (only if WAFImportMode=MANUAL) (Update requires: No interruption)"
+    Default: ""
+
+  # Stack Dependencies
+  ALBExportStack:
+    Type: String
+    Description: "ALB stack name to import origin from (Update requires: No interruption)"
+    Default: ""
+
+  # Policy Parameters
+  ResourceDeletionPolicy:
+    Type: String
+    Description: "Resource deletion policy during stack deletion (Update requires: No interruption)"
+    AllowedValues: ["Delete", "Retain", "Snapshot"]
+    Default: "Delete"
+
+  ResourceUpdateReplacePolicy:
+    Type: String
+    Description: "Resource update replacement policy during updates (Update requires: No interruption)"
+    AllowedValues: ["Delete", "Retain", "Snapshot"]
+    Default: "Delete"
+
+Conditions:
+  ShouldEnableCustomDomain: !Equals [!Ref EnableCustomDomain, "true"]
+  ShouldEnableWAF: !Equals [!Ref EnableWAF, "true"]
+  UseManualWAF: !Equals [!Ref WAFImportMode, "MANUAL"]
+  UseALBOrigin: !Not [!Equals [!Ref ALBExportStack, ""]]
+  UseCustomOrigin: !Not [!Equals [!Ref OriginDomainName, ""]]
+
+Resources:
+  # CloudFront Origin Access Control (for S3 origins - future use)
+  OriginAccessControl:
+    Type: AWS::CloudFront::OriginAccessControl
+    DeletionPolicy: !Ref ResourceDeletionPolicy
+    UpdateReplacePolicy: !Ref ResourceUpdateReplacePolicy
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-oac"
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  # CloudFront Distribution
+  CloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    DeletionPolicy: !Ref ResourceDeletionPolicy
+    UpdateReplacePolicy: !Ref ResourceUpdateReplacePolicy
+    Properties:
+      DistributionConfig:
+        # Origin Configuration
+        Origins:
+          - Id: !Sub "${ProjectName}-${Environment}-origin"
+            DomainName: !If
+              - UseALBOrigin
+              - !ImportValue
+                  Fn::Sub: "${ALBExportStack}-DNSName"
+              - !If
+                - UseCustomOrigin
+                - !Ref OriginDomainName
+                - !Sub "${ProjectName}-${Environment}-default.example.com"
+            OriginPath: !Ref OriginPath
+            CustomOriginConfig:
+              HTTPPort: 80
+              HTTPSPort: 443
+              OriginProtocolPolicy: !Ref OriginProtocolPolicy
+              OriginSSLProtocols:
+                - TLSv1.2
+                - TLSv1.1
+                - TLSv1
+              OriginReadTimeout: 30
+              OriginKeepaliveTimeout: 5
+
+        # Default Cache Behavior
+        DefaultCacheBehavior:
+          TargetOriginId: !Sub "${ProjectName}-${Environment}-origin"
+          ViewerProtocolPolicy: !Ref ViewerProtocolPolicy
+          CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad  # CachingDisabled
+          OriginRequestPolicyId: 88a5eaf4-2fd4-4709-b370-b4c650ea3fcf  # CORS-S3Origin
+          AllowedMethods:
+            - DELETE
+            - GET
+            - HEAD
+            - OPTIONS
+            - PATCH
+            - POST
+            - PUT
+          CachedMethods:
+            - GET
+            - HEAD
+            - OPTIONS
+          Compress: true
+          DefaultTTL: !Ref DefaultTTL
+          MaxTTL: !Ref MaxTTL
+          MinTTL: !Ref MinTTL
+
+        # Distribution Settings
+        Enabled: true
+        HttpVersion: http2
+        IPV6Enabled: true
+        PriceClass: !Ref PriceClass
+        
+        # Custom Domain Configuration
+        Aliases: !If
+          - ShouldEnableCustomDomain
+          - [!Ref CustomDomainName]
+          - !Ref "AWS::NoValue"
+        
+        ViewerCertificate: !If
+          - ShouldEnableCustomDomain
+          - AcmCertificateArn: !Ref CertificateArn
+            SslSupportMethod: sni-only
+            MinimumProtocolVersion: TLSv1.2_2021
+          - CloudFrontDefaultCertificate: true
+
+        # WAF Association
+        WebACLId: !If
+          - ShouldEnableWAF
+          - !If
+            - UseManualWAF
+            - !Ref WAFWebACLId
+            - !ImportValue
+                Fn::Sub: "${WAFExportStack}-WebACL-Id"
+          - !Ref "AWS::NoValue"
+
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}"
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: CostCenter
+          Value: !Ref CostCenter
+        - Key: ManagedBy
+          Value: "CloudFormation"
+
+Outputs:
+  # Main exports for other stacks
+  DistributionId:
+    Description: "CloudFront Distribution ID"
+    Value: !Ref CloudFrontDistribution
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-Id"
+
+  DistributionDomainName:
+    Description: "CloudFront Distribution Domain Name"
+    Value: !GetAtt CloudFrontDistribution.DomainName
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-DomainName"
+
+  DistributionArn:
+    Description: "CloudFront Distribution ARN"
+    Value: !Sub "arn:aws:cloudfront::${AWS::AccountId}:distribution/${CloudFrontDistribution}"
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-Arn"
+
+  # Custom Domain Output
+  CustomDomainName:
+    Condition: ShouldEnableCustomDomain
+    Description: "Custom Domain Name"
+    Value: !Ref CustomDomainName
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-CustomDomain"
+
+  # WAF Association Output
+  WAFWebACLId:
+    Condition: ShouldEnableWAF
+    Description: "Associated WAF WebACL ID"
+    Value: !If
+      - UseManualWAF
+      - !Ref WAFWebACLId
+      - !ImportValue
+          Fn::Sub: "${WAFExportStack}-WebACL-Id"
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-WAF-WebACL-Id"
+
+  # Stack Name Output
+  StackName:
+    Description: "Stack Name for cross-stack references"
+    Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}"
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-${UniqueStackName}"

@@ -1,0 +1,280 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Single SQS Queue with Dead Letter Queue'
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "Project Information"
+        Parameters:
+          - ProjectName
+          - Environment
+          - UniqueStackName
+          - CostCenter
+      - Label:
+          default: "Queue Configuration"
+        Parameters:
+          - QueueName
+          - DLQName
+          - VisibilityTimeoutSeconds
+          - MessageRetentionPeriod
+          - DelaySeconds
+          - ReceiveMessageWaitTimeSeconds
+      - Label:
+          default: "Dead Letter Queue Settings"
+        Parameters:
+          - MaxReceiveCount
+      - Label:
+          default: "Security & Encryption"
+        Parameters:
+          - EnableKMSEncryption
+          - KMSMasterKeyId
+    ParameterLabels:
+      ProjectName:
+        default: "Project Name"
+      Environment:
+        default: "Environment"
+      UniqueStackName:
+        default: "Stack Identifier"
+      CostCenter:
+        default: "Cost Center"
+      QueueName:
+        default: "Main Queue Name"
+      DLQName:
+        default: "Dead Letter Queue Name"
+      VisibilityTimeoutSeconds:
+        default: "Visibility Timeout (seconds)"
+      MessageRetentionPeriod:
+        default: "Message Retention Period (seconds)"
+      DelaySeconds:
+        default: "Delivery Delay (seconds)"
+      ReceiveMessageWaitTimeSeconds:
+        default: "Long Polling Wait Time (seconds)"
+      MaxReceiveCount:
+        default: "Max Receive Count (before DLQ)"
+      EnableKMSEncryption:
+        default: "Enable KMS Encryption"
+      KMSMasterKeyId:
+        default: "KMS Key ID"
+
+Parameters:
+  # Standard Parameters
+  ProjectName:
+    Type: String
+    Description: "Project identifier"
+  
+  Environment:
+    Type: String
+    Description: "Environment identifier"
+    AllowedValues: ["dev", "sit", "uat", "pvt", "pre-prod", "prod"]
+  
+  UniqueStackName:
+    Type: String
+    Description: "Unique identifier for this stack"
+  
+  CostCenter:
+    Type: String
+    Description: "Cost center for billing"
+    Default: "IT"
+  ResourceDeletionPolicy:
+    Type: String
+    Description: "Resource deletion policy on stack deletion (Update requires: No interruption)"
+    AllowedValues: ["Delete", "Retain", "Snapshot"]
+    Default: "Delete"
+  
+  ResourceUpdateReplacePolicy:
+    Type: String
+    Description: "Resource update replacement policy during updates (Update requires: No interruption)"
+    AllowedValues: ["Delete", "Retain", "Snapshot"]
+    Default: "Delete"
+
+
+  # Queue Configuration
+  QueueName:
+    Type: String
+    Description: "Name for the SQS queue"
+  
+  DLQName:
+    Type: String
+    Description: "Name for the dead letter queue"
+  
+  VisibilityTimeoutSeconds:
+    Type: Number
+    Description: "Visibility timeout in seconds"
+    Default: 30
+    MinValue: 0
+    MaxValue: 43200
+  
+  MessageRetentionPeriod:
+    Type: Number
+    Description: "Message retention period in seconds"
+    Default: 1209600
+    MinValue: 60
+    MaxValue: 1209600
+  
+  MaxReceiveCount:
+    Type: Number
+    Description: "Maximum receive count before moving to DLQ"
+    Default: 3
+    MinValue: 1
+    MaxValue: 1000
+  
+  DelaySeconds:
+    Type: Number
+    Description: "Delay seconds for message delivery"
+    Default: 0
+    MinValue: 0
+    MaxValue: 900
+  
+  ReceiveMessageWaitTimeSeconds:
+    Type: Number
+    Description: "Long polling wait time in seconds"
+    Default: 0
+    MinValue: 0
+    MaxValue: 20
+
+  # KMS Configuration
+  EnableKMSEncryption:
+    Type: String
+    Description: "Enable KMS encryption for queues"
+    Default: "true"
+    AllowedValues: ["true", "false"]
+  
+  KMSMasterKeyId:
+    Type: String
+    Description: "KMS key ID for encryption"
+    Default: "alias/aws/sqs"
+
+Conditions:
+  UseKMSEncryption: !Equals [!Ref EnableKMSEncryption, "true"]
+
+Resources:
+  # Dead Letter Queue
+  DeadLetterQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub "${ProjectName}-${Environment}-${DLQName}"
+      MessageRetentionPeriod: !Ref MessageRetentionPeriod
+      DelaySeconds: !Ref DelaySeconds
+      ReceiveMessageWaitTimeSeconds: !Ref ReceiveMessageWaitTimeSeconds
+      KmsMasterKeyId: !If
+        - UseKMSEncryption
+        - !Ref KMSMasterKeyId
+        - !Ref "AWS::NoValue"
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-dlq"
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: CostCenter
+          Value: !Ref CostCenter
+        - Key: Type
+          Value: "DeadLetterQueue"
+
+  # Main SQS Queue
+  MainQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub "${ProjectName}-${Environment}-${QueueName}"
+      VisibilityTimeout: !Ref VisibilityTimeoutSeconds
+      MessageRetentionPeriod: !Ref MessageRetentionPeriod
+      DelaySeconds: !Ref DelaySeconds
+      ReceiveMessageWaitTimeSeconds: !Ref ReceiveMessageWaitTimeSeconds
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt DeadLetterQueue.Arn
+        maxReceiveCount: !Ref MaxReceiveCount
+      KmsMasterKeyId: !If
+        - UseKMSEncryption
+        - !Ref KMSMasterKeyId
+        - !Ref "AWS::NoValue"
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-queue"
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: CostCenter
+          Value: !Ref CostCenter
+        - Key: Type
+          Value: "MainQueue"
+
+  # CloudWatch Alarms
+  QueueDepthAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${ProjectName}-${Environment}-${QueueName}-depth-high"
+      AlarmDescription: !Sub "${QueueName} queue depth is too high"
+      MetricName: ApproximateNumberOfVisibleMessages
+      Namespace: AWS/SQS
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 100
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: QueueName
+          Value: !GetAtt MainQueue.QueueName
+      TreatMissingData: notBreaching
+
+  DLQDepthAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${ProjectName}-${Environment}-${DLQName}-messages-received"
+      AlarmDescription: !Sub "Messages received in ${DLQName} dead letter queue"
+      MetricName: ApproximateNumberOfVisibleMessages
+      Namespace: AWS/SQS
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      Dimensions:
+        - Name: QueueName
+          Value: !GetAtt DeadLetterQueue.QueueName
+      TreatMissingData: notBreaching
+
+Outputs:
+  QueueUrl:
+    Description: URL of the SQS queue
+    Value: !Ref MainQueue
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-${UniqueStackName}-Queue-Url'
+  
+  QueueArn:
+    Description: ARN of the SQS queue
+    Value: !GetAtt MainQueue.Arn
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-${UniqueStackName}-Queue-Arn'
+  
+  QueueName:
+    Description: Name of the SQS queue
+    Value: !GetAtt MainQueue.QueueName
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-${UniqueStackName}-Queue-Name'
+  
+  DLQUrl:
+    Description: URL of the dead letter queue
+    Value: !Ref DeadLetterQueue
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-${UniqueStackName}-DLQ-Url'
+  
+  DLQArn:
+    Description: ARN of the dead letter queue
+    Value: !GetAtt DeadLetterQueue.Arn
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-${UniqueStackName}-DLQ-Arn'
+  
+  DLQName:
+    Description: Name of the dead letter queue
+    Value: !GetAtt DeadLetterQueue.QueueName
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-${UniqueStackName}-DLQ-Name'
+
+  StackName:
+    Description: "Stack Name for cross-stack references"
+    Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}"
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-${UniqueStackName}"

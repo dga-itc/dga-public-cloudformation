@@ -1,0 +1,18 @@
+[
+  {
+    "ParameterKey": "ProjectName",
+    "ParameterValue": "itc"
+  },
+  {
+    "ParameterKey": "Environment",
+    "ParameterValue": "sit"
+  },
+  {
+    "ParameterKey": "UniqueStackName",
+    "ParameterValue": "nlb-pub"
+  },
+  {
+    "ParameterKey": "CostCenter",
+    "ParameterValue": "IT"
+  }
+]

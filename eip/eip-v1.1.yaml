@@ -1,0 +1,121 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Elastic IP Stack for NLB'
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "Project Information"
+        Parameters:
+          - ProjectName
+          - Environment
+          - UniqueStackName
+          - CostCenter
+    ParameterLabels:
+      ProjectName:
+        default: "Project Name"
+      Environment:
+        default: "Environment"
+      UniqueStackName:
+        default: "Stack Unique Name"
+      CostCenter:
+        default: "Cost Center"
+
+Parameters:
+  ProjectName:
+    Type: String
+    Description: "Project identifier"
+  
+  Environment:
+    Type: String
+    Description: "Environment identifier"
+    AllowedValues: ["dev", "sit", "uat", "pvt", "pre-prod", "prod"]
+  
+  UniqueStackName:
+    Type: String
+    Description: "Unique identifier for this stack"
+    Default: "nlb-eips"
+
+  CostCenter:
+    Type: String
+    Description: "Cost center for billing"
+    Default: "IT"
+  ResourceDeletionPolicy:
+    Type: String
+    Description: "Resource deletion policy on stack deletion (Update requires: No interruption)"
+    AllowedValues: ["Delete", "Retain", "Snapshot"]
+    Default: "Delete"
+  
+  ResourceUpdateReplacePolicy:
+    Type: String
+    Description: "Resource update replacement policy during updates (Update requires: No interruption)"
+    AllowedValues: ["Delete", "Retain", "Snapshot"]
+    Default: "Delete"
+
+
+
+Conditions:
+  ShouldRetainOnDelete: !Equals [!Ref ResourceDeletionPolicy, "Retain"]
+  ShouldSnapshotOnDelete: !Equals [!Ref ResourceDeletionPolicy, "Snapshot"]
+  ShouldRetainOnReplace: !Equals [!Ref ResourceUpdateReplacePolicy, "Retain"]
+  ShouldSnapshotOnReplace: !Equals [!Ref ResourceUpdateReplacePolicy, "Snapshot"]
+
+Resources:
+  EIP1:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-eip1"
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: CostCenter
+          Value: !Ref CostCenter
+
+  EIP2:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-eip2"
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: CostCenter
+          Value: !Ref CostCenter
+
+Outputs:
+  EIP1AllocationId:
+    Description: EIP 1 Allocation ID
+    Value: !GetAtt EIP1.AllocationId
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-${UniqueStackName}-EIP1-AllocationId'
+
+  EIP2AllocationId:
+    Description: EIP 2 Allocation ID
+    Value: !GetAtt EIP2.AllocationId
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-${UniqueStackName}-EIP2-AllocationId'
+
+  EIP1PublicIp:
+    Description: EIP 1 Public IP
+    Value: !Ref EIP1
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-${UniqueStackName}-EIP1-PublicIp'
+
+  EIP2PublicIp:
+    Description: EIP 2 Public IP
+    Value: !Ref EIP2
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-${UniqueStackName}-EIP2-PublicIp'
+
+  StackName:
+    Description: "Stack Name for cross-stack references"
+    Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}"
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-${UniqueStackName}"

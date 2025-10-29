@@ -1,0 +1,480 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Generic ECS Service with EFS Storage (Stateful)'
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "Project Information"
+        Parameters:
+          - ProjectName
+          - Environment
+          - UniqueStackName
+          - CostCenter
+      - Label:
+          default: "Network Configuration"
+        Parameters:
+          - ContainerPort
+          - HealthCheckPath
+          - HealthCheckMatcher
+          - DomainName
+          - PathPattern
+          - ListenerRulePriority
+      - Label:
+          default: "Service Configuration"
+        Parameters:
+          - ContainerName
+          - ContainerImage
+          - ContainerCpu
+          - ContainerMemory
+          - DesiredCount
+          - EFSMountPath
+          - ContainerUser
+      - Label:
+          default: "Stack Dependencies"
+        Parameters:
+          - VPCExportStack
+          - ECSExportStack
+          - ALBExportStack
+          - IAMExportStack
+          - EFSExportStack
+
+Parameters:
+  # Standard Parameters
+  ProjectName:
+    Type: String
+    Description: "Project identifier"
+  
+  Environment:
+    Type: String
+    Description: "Environment identifier"
+    AllowedValues: ["dev", "sit", "uat", "pvt", "pre-prod", "prod"]
+  
+  UniqueStackName:
+    Type: String
+    Description: "Unique identifier for this stack"
+    Default: "ecs-service-stateful"
+  
+  CostCenter:
+    Type: String
+    Description: "Cost center for billing"
+    Default: "IT"
+
+  # Stack Dependencies
+  VPCExportStack:
+    Type: String
+    Description: "VPC stack name to import from"
+    Default: "lab-iac-prod-main-vpc"
+  
+  ECSExportStack:
+    Type: String
+    Description: "ECS cluster stack name to import from"
+    Default: "lab-iac-prod-ecs-cluster"
+  
+  ALBExportStack:
+    Type: String
+    Description: "ALB stack name to import from"
+    Default: "lab-iac-prod-alb"
+  
+  IAMExportStack:
+    Type: String
+    Description: "IAM roles stack name to import from"
+    Default: "lab-iac-prod-iam-roles"
+  
+  EFSExportStack:
+    Type: String
+    Description: "EFS stack name to import from"
+    Default: "lab-iac-prod-efs"
+
+  # Container Configuration
+  ContainerName:
+    Type: String
+    Description: "Container name"
+    Default: "app"
+  
+  ContainerImage:
+    Type: String
+    Description: "Container image"
+    Default: "nginx:latest"
+  
+  ContainerPort:
+    Type: Number
+    Description: "Container port"
+    Default: 80
+    MinValue: 1
+    MaxValue: 65535
+  
+  ContainerCpu:
+    Type: Number
+    Description: "Container CPU units"
+    Default: 256
+    AllowedValues: [256, 512, 1024, 2048, 4096]
+  
+  ContainerMemory:
+    Type: Number
+    Description: "Container memory (MB)"
+    Default: 512
+    AllowedValues: [512, 1024, 2048, 4096, 8192, 16384, 30720]
+
+  # Service Configuration
+  DesiredCount:
+    Type: Number
+    Description: "Desired number of tasks"
+    Default: 1
+    MinValue: 0
+    MaxValue: 10
+
+  # EFS Configuration
+  EFSMountPath:
+    Type: String
+    Description: "EFS mount path in container"
+    Default: "/app/data"
+  
+  EFSAccessPointPath:
+    Type: String
+    Description: "EFS access point root directory path"
+    Default: "/app-data"
+  
+  ContainerUser:
+    Type: String
+    Description: "Container user (UID:GID)"
+    Default: "1000"
+
+  # ALB Configuration
+  DomainName:
+    Type: String
+    Description: "Domain name for the service"
+    Default: "*"
+  
+  PathPattern:
+    Type: String
+    Description: "Path pattern for ALB listener rule"
+    Default: "/*"
+  
+  HealthCheckPath:
+    Type: String
+    Description: "Health check path"
+    Default: "/"
+  
+  HealthCheckMatcher:
+    Type: String
+    Description: "HTTP status codes for health check"
+    Default: "200"
+  
+  ListenerRulePriority:
+    Type: Number
+    Description: "ALB listener rule priority"
+    Default: 100
+    MinValue: 1
+    MaxValue: 50000
+
+  # Environment Variables
+  EnvironmentVariables:
+    Type: CommaDelimitedList
+    Description: "Environment variables (KEY=VALUE format)"
+    Default: ""
+
+  # Advanced Configuration
+  LogRetentionDays:
+    Type: Number
+    Description: "CloudWatch log retention in days"
+    Default: 7
+    AllowedValues: [1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1827, 3653]
+
+  EFSAccessPointPermissions:
+    Type: String
+    Description: "EFS access point permissions"
+    Default: "755"
+
+  HealthCheckInterval:
+    Type: Number
+    Description: "Health check interval in seconds"
+    Default: 30
+    MinValue: 5
+    MaxValue: 300
+
+  HealthCheckTimeout:
+    Type: Number
+    Description: "Health check timeout in seconds"
+    Default: 5
+    MinValue: 2
+    MaxValue: 120
+
+  HealthyThresholdCount:
+    Type: Number
+    Description: "Healthy threshold count"
+    Default: 2
+    MinValue: 2
+    MaxValue: 10
+
+  UnhealthyThresholdCount:
+    Type: Number
+    Description: "Unhealthy threshold count"
+    Default: 3
+    MinValue: 2
+    MaxValue: 10
+
+Conditions:
+  HasEnvironmentVariables: !Not [!Equals [!Join ["", !Ref EnvironmentVariables], ""]]
+  HasDomainName: !Not [!Equals [!Ref DomainName, "*"]]
+
+Resources:
+  # EFS Access Point
+  EFSAccessPoint:
+    Type: AWS::EFS::AccessPoint
+    Properties:
+      FileSystemId: !ImportValue
+        Fn::Sub: '${EFSExportStack}-Id'
+      PosixUser:
+        Uid: !Ref ContainerUser
+        Gid: !Ref ContainerUser
+      RootDirectory:
+        Path: !Ref EFSAccessPointPath
+        CreationInfo:
+          OwnerUid: !Ref ContainerUser
+          OwnerGid: !Ref ContainerUser
+          Permissions: !Ref EFSAccessPointPermissions
+      AccessPointTags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-efs-ap"
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: CostCenter
+          Value: !Ref CostCenter
+
+  # Security Group
+  SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-sg"
+      GroupDescription: !Sub "Security group for ${ContainerName} ECS service"
+      VpcId: !ImportValue
+        Fn::Sub: '${VPCExportStack}-Id'
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: !Ref ContainerPort
+          ToPort: !Ref ContainerPort
+          SourceSecurityGroupId: !ImportValue
+            Fn::Sub: '${ALBExportStack}-SecurityGroup-Id'
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 2049
+          ToPort: 2049
+          DestinationSecurityGroupId: !ImportValue
+            Fn::Sub: '${EFSExportStack}-SecurityGroup-Id'
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-sg"
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: CostCenter
+          Value: !Ref CostCenter
+
+  # CloudWatch Log Group
+  LogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/ecs/${ProjectName}-${Environment}-${ContainerName}"
+      RetentionInDays: !Ref LogRetentionDays
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-logs"
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: CostCenter
+          Value: !Ref CostCenter
+
+  # ECS Task Definition
+  TaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-${ContainerName}"
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      Cpu: !Ref ContainerCpu
+      Memory: !Ref ContainerMemory
+      ExecutionRoleArn: !ImportValue
+        Fn::Sub: '${IAMExportStack}-TaskExecutionRole-Arn'
+      TaskRoleArn: !ImportValue
+        Fn::Sub: '${IAMExportStack}-TaskRole-Arn'
+      ContainerDefinitions:
+        - Name: !Ref ContainerName
+          Image: !Ref ContainerImage
+          PortMappings:
+            - ContainerPort: !Ref ContainerPort
+              Protocol: tcp
+          Environment: !If
+            - HasEnvironmentVariables
+            - !Split
+              - ","
+              - !Sub
+                - "${inner}"
+                - inner: !Join
+                  - ","
+                  - !Ref EnvironmentVariables
+            - !Ref "AWS::NoValue"
+          MountPoints:
+            - SourceVolume: efs-volume
+              ContainerPath: !Ref EFSMountPath
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref LogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: ecs
+      Volumes:
+        - Name: efs-volume
+          EFSVolumeConfiguration:
+            FilesystemId: !ImportValue
+              Fn::Sub: '${EFSExportStack}-Id'
+            AuthorizationConfig:
+              AccessPointId: !Ref EFSAccessPoint
+            TransitEncryption: ENABLED
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-task-def"
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: CostCenter
+          Value: !Ref CostCenter
+
+  # ALB Target Group
+  TargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: !Sub "${ProjectName}-${Environment}-${ContainerName}-tg"
+      Port: !Ref ContainerPort
+      Protocol: HTTP
+      VpcId: !ImportValue
+        Fn::Sub: '${VPCExportStack}-Id'
+      TargetType: ip
+      HealthCheckPath: !Ref HealthCheckPath
+      HealthCheckProtocol: HTTP
+      HealthCheckIntervalSeconds: !Ref HealthCheckInterval
+      HealthCheckTimeoutSeconds: !Ref HealthCheckTimeout
+      HealthyThresholdCount: !Ref HealthyThresholdCount
+      UnhealthyThresholdCount: !Ref UnhealthyThresholdCount
+      Matcher:
+        HttpCode: !Ref HealthCheckMatcher
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-tg"
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: CostCenter
+          Value: !Ref CostCenter
+
+  # ALB Listener Rule
+  ListenerRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      ListenerArn: !ImportValue
+        Fn::Sub: '${ALBExportStack}-HTTPSListener-Arn'
+      Priority: !Ref ListenerRulePriority
+      Conditions: !If
+        - HasDomainName
+        - - Field: host-header
+            Values:
+              - !Ref DomainName
+          - Field: path-pattern
+            Values:
+              - !Ref PathPattern
+        - - Field: path-pattern
+            Values:
+              - !Ref PathPattern
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref TargetGroup
+
+  # ECS Service
+  ECSService:
+    Type: AWS::ECS::Service
+    DependsOn: ListenerRule
+    Properties:
+      ServiceName: !Sub "${ProjectName}-${Environment}-${ContainerName}"
+      Cluster: !ImportValue
+        Fn::Sub: '${ECSExportStack}-Name'
+      TaskDefinition: !Ref TaskDefinition
+      LaunchType: FARGATE
+      DesiredCount: !Ref DesiredCount
+      EnableExecuteCommand: true
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          SecurityGroups:
+            - !Ref SecurityGroup
+            - !ImportValue
+                Fn::Sub: '${EFSExportStack}-SecurityGroup-Id'
+          Subnets:
+            - !ImportValue
+                Fn::Sub: '${VPCExportStack}-ContainerSubnet1-Id'
+            - !ImportValue
+                Fn::Sub: '${VPCExportStack}-ContainerSubnet2-Id'
+      LoadBalancers:
+        - ContainerName: !Ref ContainerName
+          ContainerPort: !Ref ContainerPort
+          TargetGroupArn: !Ref TargetGroup
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-service"
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: CostCenter
+          Value: !Ref CostCenter
+
+Outputs:
+  ServiceName:
+    Description: ECS Service Name
+    Value: !Ref ECSService
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-${UniqueStackName}-Service-Name'
+  
+  ServiceArn:
+    Description: ECS Service ARN
+    Value: !Ref ECSService
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-${UniqueStackName}-Service-Arn'
+  
+  TargetGroupArn:
+    Description: Target Group ARN
+    Value: !Ref TargetGroup
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-${UniqueStackName}-TargetGroup-Arn'
+  
+  SecurityGroupId:
+    Description: Security Group ID
+    Value: !Ref SecurityGroup
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-${UniqueStackName}-SecurityGroup-Id'
+  
+  EFSAccessPointId:
+    Description: EFS Access Point ID
+    Value: !Ref EFSAccessPoint
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-${UniqueStackName}-AccessPoint-Id'
+
+  StackName:
+    Description: "Stack Name for cross-stack references"
+    Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}"
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-${UniqueStackName}"

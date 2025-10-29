@@ -1,0 +1,516 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'ECS Service Module v2.1 - Stateless (Improved with Bug Fixes & Enhancements) v1.1 - Added policy parameters'
+
+Metadata:
+  Version: "v1.1"
+  LastUpdated: "2025-01-25"
+  BreakingChanges: "Added policy parameters, updated TG naming"
+  UpgradeFrom: "v1.0"
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "Project Information"
+        Parameters:
+          - ProjectName
+          - Environment
+          - UniqueStackName
+          - CostCenter
+      - Label:
+          default: "Resource Policies"
+        Parameters:
+          - ResourceDeletionPolicy
+          - ResourceUpdateReplacePolicy
+      - Label:
+          default: "Network Configuration"
+        Parameters:
+          - ContainerPort
+          - HealthCheckPath
+          - HealthCheckMatcher
+          - DomainName
+          - PathPattern
+          - ListenerRulePriority
+      - Label:
+          default: "Service Configuration"
+        Parameters:
+          - ContainerName
+          - ContainerImage
+          - ContainerCpu
+          - ContainerMemory
+          - DesiredCount
+      - Label:
+          default: "Stack Dependencies"
+        Parameters:
+          - VPCExportStack
+          - ECSExportStack
+          - ALBExportStack
+          - IAMExportStack
+    ParameterLabels:
+      ProjectName:
+        default: "Project Name"
+      Environment:
+        default: "Environment"
+      UniqueStackName:
+        default: "Stack Unique Name"
+      CostCenter:
+        default: "Cost Center"
+      ContainerName:
+        default: "Container Name"
+      ContainerImage:
+        default: "Container Image"
+      ContainerPort:
+        default: "Container Port"
+      DomainName:
+        default: "Domain Name"
+      PathPattern:
+        default: "Path Pattern"
+
+Parameters:
+  # ==========================================
+  # Core Parameters
+  # ==========================================
+  ProjectName:
+    Type: String
+    Description: "Project identifier"
+
+  Environment:
+    Type: String
+    Description: "Environment identifier"
+    AllowedValues: ["dev", "sit", "uat", "pvt", "pre-prod", "prod"]
+
+  UniqueStackName:
+    Type: String
+    Description: "Unique identifier for this stack"
+    Default: "ecs-service"
+
+  CostCenter:
+    Type: String
+    Description: "Cost center for billing"
+    Default: "IT"
+  ResourceDeletionPolicy:
+    Type: String
+    Description: "Resource deletion policy on stack deletion (Update requires: No interruption)"
+    AllowedValues: ["Delete", "Retain", "Snapshot"]
+    Default: "Delete"
+  
+  ResourceUpdateReplacePolicy:
+    Type: String
+    Description: "Resource update replacement policy during updates (Update requires: No interruption)"
+    AllowedValues: ["Delete", "Retain", "Snapshot"]
+    Default: "Delete"
+
+
+  # ==========================================
+  # Stack Dependencies
+  # ==========================================
+  VPCExportStack:
+    Type: String
+    Description: "VPC stack name to import from"
+    Default: "lab-iac-prod-main-vpc"
+
+  ECSExportStack:
+    Type: String
+    Description: "ECS Cluster stack name to import from"
+    Default: "lab-iac-prod-ecs-cluster"
+
+  IAMExportStack:
+    Type: String
+    Description: "IAM Roles stack name to import from"
+    Default: "lab-iac-prod-iam-roles"
+
+  ALBExportStack:
+    Type: String
+    Description: "ALB stack name to import from"
+    Default: "lab-iac-prod-alb"
+
+  # ==========================================
+  # Container Configuration
+  # ==========================================
+  ContainerName:
+    Type: String
+    Description: "Container name"
+    Default: "app"
+
+  ContainerImage:
+    Type: String
+    Description: "Container image URI (e.g., nginx:alpine for testing)"
+    Default: "nginx:alpine"
+
+  ContainerPort:
+    Type: Number
+    Description: "Container port (1-65535)"
+    Default: 80
+    MinValue: 1
+    MaxValue: 65535
+
+  ContainerCpu:
+    Type: Number
+    Description: "Container CPU units (Fargate compatible)"
+    Default: 512
+    AllowedValues: [256, 512, 1024, 2048, 4096]
+
+  ContainerMemory:
+    Type: Number
+    Description: "Container memory in MB (must be compatible with CPU)"
+    Default: 1024
+    AllowedValues: [512, 1024, 2048, 4096, 8192, 16384, 30720]
+
+  DesiredCount:
+    Type: Number
+    Description: "Desired number of tasks (0 = stopped)"
+    Default: 1
+    MinValue: 0
+    MaxValue: 100
+
+  # ==========================================
+  # Environment Variables
+  # ==========================================
+  EnvironmentVariables:
+    Type: CommaDelimitedList
+    Description: "Environment variables in KEY=VALUE format (e.g., NODE_ENV=production,DEBUG=false)"
+    Default: ""
+
+  # ==========================================
+  # Health Check Configuration
+  # ==========================================
+  HealthCheckPath:
+    Type: String
+    Description: "Health check path (e.g., /, /health, /api/healthz)"
+    Default: "/"
+
+  HealthCheckMatcher:
+    Type: String
+    Description: "HTTP status codes for health check"
+    Default: "200"
+    AllowedValues:
+      - "200"
+      - "200-299"
+      - "200-399"
+
+  HealthCheckInterval:
+    Type: Number
+    Description: "Health check interval in seconds"
+    Default: 30
+    MinValue: 5
+    MaxValue: 300
+
+  HealthCheckTimeout:
+    Type: Number
+    Description: "Health check timeout in seconds"
+    Default: 5
+    MinValue: 2
+    MaxValue: 120
+
+  HealthyThresholdCount:
+    Type: Number
+    Description: "Consecutive health checks needed to be healthy"
+    Default: 2
+    MinValue: 2
+    MaxValue: 10
+
+  UnhealthyThresholdCount:
+    Type: Number
+    Description: "Consecutive health check failures before unhealthy"
+    Default: 3
+    MinValue: 2
+    MaxValue: 10
+
+  # ==========================================
+  # ALB Configuration
+  # ==========================================
+  DomainName:
+    Type: String
+    Description: "Domain name for listener rule (use * for all)"
+    Default: "*"
+
+  PathPattern:
+    Type: String
+    Description: "Path pattern for listener rule"
+    Default: "/*"
+
+  ListenerRulePriority:
+    Type: Number
+    Description: "ALB listener rule priority (1-50000, must be unique)"
+    Default: 100
+    MinValue: 1
+    MaxValue: 50000
+
+  # ==========================================
+  # Advanced Configuration
+  # ==========================================
+  LogRetentionDays:
+    Type: Number
+    Description: "CloudWatch log retention in days"
+    Default: 7
+    AllowedValues: [1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1827, 3653]
+
+  EnableCircuitBreaker:
+    Type: String
+    Description: "Enable deployment circuit breaker"
+    Default: "true"
+    AllowedValues: ["true", "false"]
+
+Conditions:
+  HasEnvironmentVariables: !Not [!Equals [!Join ["", !Ref EnvironmentVariables], ""]]
+  HasDomainName: !Not [!Equals [!Ref DomainName, "*"]]
+  IsCircuitBreakerEnabled: !Equals [!Ref EnableCircuitBreaker, "true"]
+
+Mappings:
+  EnvMap:
+    prod: { Short: "Prd" }
+    pre-prod: { Short: "Pprd" }
+    pvt: { Short: "Pvt" }
+    uat: { Short: "Uat" }
+    dev: { Short: "Dev" }
+    sit: { Short: "Sit" }
+
+Resources:
+  # ==========================================
+  # Security Group
+  # ==========================================
+  SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-sg"
+      GroupDescription: !Sub "Security group for ${ContainerName} ECS service"
+      VpcId: !ImportValue
+        Fn::Sub: '${VPCExportStack}-Id'
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: !Ref ContainerPort
+          ToPort: !Ref ContainerPort
+          SourceSecurityGroupId: !ImportValue
+            Fn::Sub: '${ALBExportStack}-SecurityGroup-Id'
+          Description: "Allow traffic from ALB"
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+          Description: "HTTPS outbound for API calls"
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+          Description: "HTTP outbound"
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-sg"
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: CostCenter
+          Value: !Ref CostCenter
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  # ==========================================
+  # CloudWatch Log Group
+  # ==========================================
+  LogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/ecs/${ProjectName}-${Environment}-${UniqueStackName}-${ContainerName}"
+      RetentionInDays: !Ref LogRetentionDays
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-logs"
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: CostCenter
+          Value: !Ref CostCenter
+
+  # ==========================================
+  # ECS Task Definition
+  # ==========================================
+  TaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-${ContainerName}"
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      Cpu: !Ref ContainerCpu
+      Memory: !Ref ContainerMemory
+      ExecutionRoleArn: !ImportValue
+        Fn::Sub: '${IAMExportStack}-TaskExecutionRole-Arn'
+      TaskRoleArn: !ImportValue
+        Fn::Sub: '${IAMExportStack}-TaskRole-Arn'
+      ContainerDefinitions:
+        - Name: !Ref ContainerName
+          Image: !Ref ContainerImage
+          PortMappings:
+            - ContainerPort: !Ref ContainerPort
+              Protocol: tcp
+          Environment: !If
+            - HasEnvironmentVariables
+            - !Split
+              - ","
+              - !Join
+                - ","
+                - !Ref EnvironmentVariables
+            - !Ref "AWS::NoValue"
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref LogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: ecs
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-task-def"
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: CostCenter
+          Value: !Ref CostCenter
+
+  # ==========================================
+  # ALB Target Group
+  # ==========================================
+  TargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-tg"
+      Port: !Ref ContainerPort
+      Protocol: HTTP
+      VpcId: !ImportValue
+        Fn::Sub: '${VPCExportStack}-Id'
+      TargetType: ip
+      HealthCheckEnabled: true
+      HealthCheckPath: !Ref HealthCheckPath
+      HealthCheckProtocol: HTTP
+      HealthyThresholdCount: !Ref HealthyThresholdCount
+      UnhealthyThresholdCount: !Ref UnhealthyThresholdCount
+      HealthCheckTimeoutSeconds: !Ref HealthCheckTimeout
+      HealthCheckIntervalSeconds: !Ref HealthCheckInterval
+      Matcher:
+        HttpCode: !Ref HealthCheckMatcher
+      TargetGroupAttributes:
+        - Key: deregistration_delay.timeout_seconds
+          Value: "30"
+        - Key: stickiness.enabled
+          Value: "false"
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-tg"
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: CostCenter
+          Value: !Ref CostCenter
+
+  # ==========================================
+  # ALB Listener Rule
+  # ==========================================
+  ListenerRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      ListenerArn: !ImportValue
+        Fn::Sub: '${ALBExportStack}-HTTPSListener-Arn'
+      Priority: !Ref ListenerRulePriority
+      Conditions: !If
+        - HasDomainName
+        - - Field: host-header
+            HostHeaderConfig:
+              Values:
+                - !Ref DomainName
+          - Field: path-pattern
+            PathPatternConfig:
+              Values:
+                - !Ref PathPattern
+        - - Field: path-pattern
+            PathPatternConfig:
+              Values:
+                - !Ref PathPattern
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref TargetGroup
+
+  # ==========================================
+  # ECS Service
+  # ==========================================
+  Service:
+    Type: AWS::ECS::Service
+    DependsOn: ListenerRule
+    Properties:
+      ServiceName: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-${ContainerName}"
+      Cluster: !ImportValue
+        Fn::Sub: '${ECSExportStack}-Id'
+      TaskDefinition: !Ref TaskDefinition
+      DesiredCount: !Ref DesiredCount
+      LaunchType: FARGATE
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 100
+        DeploymentCircuitBreaker: !If
+          - IsCircuitBreakerEnabled
+          - Enable: true
+            Rollback: true
+          - !Ref "AWS::NoValue"
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          Subnets:
+            - !ImportValue
+                Fn::Sub: '${VPCExportStack}-ContainerSubnet1-Id'
+            - !ImportValue
+                Fn::Sub: '${VPCExportStack}-ContainerSubnet2-Id'
+          SecurityGroups:
+            - !Ref SecurityGroup
+      LoadBalancers:
+        - ContainerName: !Ref ContainerName
+          ContainerPort: !Ref ContainerPort
+          TargetGroupArn: !Ref TargetGroup
+      EnableExecuteCommand: true
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-service"
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: CostCenter
+          Value: !Ref CostCenter
+
+Outputs:
+  ServiceName:
+    Description: ECS Service Name
+    Value: !GetAtt Service.Name
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-${UniqueStackName}-Service-Name'
+
+  ServiceArn:
+    Description: ECS Service ARN
+    Value: !Ref Service
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-${UniqueStackName}-Service-Arn'
+
+  TargetGroupArn:
+    Description: Target Group ARN
+    Value: !Ref TargetGroup
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-${UniqueStackName}-TargetGroup-Arn'
+
+  SecurityGroupId:
+    Description: Security Group ID
+    Value: !Ref SecurityGroup
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-${UniqueStackName}-SecurityGroup-Id'
+
+  LogGroupName:
+    Description: CloudWatch Log Group Name
+    Value: !Ref LogGroup
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-${UniqueStackName}-LogGroup-Name'
+
+  StackName:
+    Description: "Stack Name for cross-stack references"
+    Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}"
+    Export:
+      Name: !Sub
+        - "${ProjectName}${EnvShort}-${UniqueStackName}"
+        - EnvShort: !FindInMap [EnvMap, !Ref Environment, Short]

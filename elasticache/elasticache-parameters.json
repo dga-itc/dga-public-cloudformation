@@ -1,0 +1,78 @@
+[
+  {
+    "ParameterKey": "ProjectName",
+    "ParameterValue": "tuxtum"
+  },
+  {
+    "ParameterKey": "Environment",
+    "ParameterValue": "uat"
+  },
+  {
+    "ParameterKey": "UniqueStackName",
+    "ParameterValue": "serverless-redis"
+  },
+  {
+    "ParameterKey": "VPCStackUniqueName",
+    "ParameterValue": "main-vpc"
+  },
+  {
+    "ParameterKey": "SecondaryCidr",
+    "ParameterValue": "100.64.0.0/16"
+  },
+  {
+    "ParameterKey": "Engine",
+    "ParameterValue": "redis"
+  },
+  {
+    "ParameterKey": "CacheName",
+    "ParameterValue": "tuxtum-uat-redis"
+  },
+  {
+    "ParameterKey": "MajorEngineVersion",
+    "ParameterValue": "7"
+  },
+  {
+    "ParameterKey": "Description",
+    "ParameterValue": "ElastiCache Serverless Redis for UAT environment"
+  },
+  {
+    "ParameterKey": "MaxDataStorage",
+    "ParameterValue": "1"
+  },
+  {
+    "ParameterKey": "MaxECPUPerSecond",
+    "ParameterValue": "1000"
+  },
+  {
+    "ParameterKey": "SnapshotRetentionLimit",
+    "ParameterValue": "1"
+  },
+  {
+    "ParameterKey": "DailySnapshotTime",
+    "ParameterValue": "03:00"
+  },
+  {
+    "ParameterKey": "VPCImportMode",
+    "ParameterValue": "AUTO"
+  },
+  {
+    "ParameterKey": "VpcId",
+    "ParameterValue": ""
+  },
+  {
+    "ParameterKey": "DatabaseSubnetId1",
+    "ParameterValue": ""
+  },
+  {
+    "ParameterKey": "DatabaseSubnetId2",
+    "ParameterValue": ""
+  },
+  {
+    "ParameterKey": "DatabaseSubnetId3",
+    "ParameterValue": ""
+  },
+  {
+    "ParameterKey": "CostCenter",
+    "ParameterValue": "IT"
+  }
+]

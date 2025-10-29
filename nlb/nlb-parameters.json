@@ -1,0 +1,58 @@
+[
+  {
+    "ParameterKey": "ProjectName",
+    "ParameterValue": "tuxtum"
+  },
+  {
+    "ParameterKey": "Environment",
+    "ParameterValue": "uat"
+  },
+  {
+    "ParameterKey": "UniqueStackName",
+    "ParameterValue": "main-nlb"
+  },
+  {
+    "ParameterKey": "VPCStackUniqueName",
+    "ParameterValue": "main-vpc"
+  },
+  {
+    "ParameterKey": "EIPStackUniqueName",
+    "ParameterValue": "elb-eip"
+  },
+  {
+    "ParameterKey": "ALBStackUniqueName",
+    "ParameterValue": "main-alb"
+  },
+  {
+    "ParameterKey": "VPCImportMode",
+    "ParameterValue": "AUTO"
+  },
+  {
+    "ParameterKey": "VpcId",
+    "ParameterValue": ""
+  },
+  {
+    "ParameterKey": "PublicSubnetId1",
+    "ParameterValue": ""
+  },
+  {
+    "ParameterKey": "PublicSubnetId2",
+    "ParameterValue": ""
+  },
+  {
+    "ParameterKey": "EIPImportMode",
+    "ParameterValue": "AUTO"
+  },
+  {
+    "ParameterKey": "NLBEIPAllocationId1",
+    "ParameterValue": ""
+  },
+  {
+    "ParameterKey": "NLBEIPAllocationId2",
+    "ParameterValue": ""
+  },
+  {
+    "ParameterKey": "CostCenter",
+    "ParameterValue": "IT"
+  }
+]

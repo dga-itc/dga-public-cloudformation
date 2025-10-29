@@ -1,0 +1,50 @@
+[
+  {
+    "ParameterKey": "ProjectName",
+    "ParameterValue": "tuxtum"
+  },
+  {
+    "ParameterKey": "Environment",
+    "ParameterValue": "uat"
+  },
+  {
+    "ParameterKey": "UniqueStackName",
+    "ParameterValue": "main-cluster"
+  },
+  {
+    "ParameterKey": "Owner",
+    "ParameterValue": "tuxtum"
+  },
+  {
+    "ParameterKey": "CostCenter",
+    "ParameterValue": "IT"
+  },
+  {
+    "ParameterKey": "BusinessUnit",
+    "ParameterValue": "IT"
+  },
+  {
+    "ParameterKey": "ContactEmail",
+    "ParameterValue": "tuxtum@example.com"
+  },
+  {
+    "ParameterKey": "Application",
+    "ParameterValue": ""
+  },
+  {
+    "ParameterKey": "Compliance",
+    "ParameterValue": ""
+  },
+  {
+    "ParameterKey": "DataClassification",
+    "ParameterValue": "internal"
+  },
+  {
+    "ParameterKey": "ClusterName",
+    "ParameterValue": ""
+  },
+  {
+    "ParameterKey": "EnableContainerInsights",
+    "ParameterValue": "enabled"
+  }
+]

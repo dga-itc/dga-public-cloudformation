@@ -1,0 +1,172 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Private Network Load Balancer with ALB Target Group'
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "Project Information"
+        Parameters:
+          - ProjectName
+          - Environment
+          - UniqueStackName
+          - CostCenter
+      - Label:
+          default: "Service Configuration"
+        Parameters:
+          - LoadBalancerScheme
+      - Label:
+          default: "Stack Dependencies"
+        Parameters:
+          - VPCExportStack
+          - ALBExportStack
+    ParameterLabels:
+      ProjectName:
+        default: "Project Name"
+      Environment:
+        default: "Environment"
+      UniqueStackName:
+        default: "Stack Unique Name"
+      CostCenter:
+        default: "Cost Center"
+      LoadBalancerScheme:
+        default: "Load Balancer Scheme"
+      VPCExportStack:
+        default: "VPC Export Stack Name"
+      ALBExportStack:
+        default: "ALB Export Stack Name"
+
+Parameters:
+  ProjectName:
+    Type: String
+    Description: "Project identifier"
+  
+  Environment:
+    Type: String
+    Description: "Environment identifier"
+    AllowedValues: ["dev", "sit", "uat", "pvt", "pre-prod", "prod"]
+  
+  UniqueStackName:
+    Type: String
+    Description: "Unique identifier for this stack"
+    Default: "nlb-private"
+
+  # Stack Dependencies
+  VPCExportStack:
+    Type: String
+    Description: "VPC stack name to import from"
+    Default: "lab-iac-prod-main-vpc"
+  
+  ALBExportStack:
+    Type: String
+    Description: "ALB stack name to import from"
+    Default: "lab-iac-prod-alb"
+
+  # Load Balancer Configuration
+  LoadBalancerScheme:
+    Type: String
+    Description: "Load balancer scheme"
+    AllowedValues: ["internal", "internet-facing"]
+    Default: "internal"
+
+  # Required Tags
+  CostCenter:
+    Type: String
+    Description: "Cost center for billing"
+
+Resources:
+  # Private Network Load Balancer
+  NetworkLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: !Sub "${ProjectName}-${Environment}-${UniqueStackName}"
+      Type: network
+      Scheme: !Ref LoadBalancerScheme
+      IpAddressType: ipv4
+      Subnets:
+        - !ImportValue
+            Fn::Sub: '${VPCExportStack}-PrivateSubnet1-Id'
+        - !ImportValue
+            Fn::Sub: '${VPCExportStack}-PrivateSubnet2-Id'
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}"
+
+  # Target Group for ALB
+  TargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    DependsOn: NetworkLoadBalancer
+    Properties:
+      Name: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-tg"
+      Port: 80
+      Protocol: TCP
+      VpcId: !ImportValue
+        Fn::Sub: '${VPCExportStack}-Id'
+      TargetType: alb
+      Targets:
+        - Id: !ImportValue
+            Fn::Sub: '${ALBExportStack}-Arn'
+      HealthCheckEnabled: true
+      HealthCheckProtocol: HTTP
+      HealthCheckPath: /
+      HealthCheckIntervalSeconds: 30
+      HealthCheckTimeoutSeconds: 10
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 2
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-tg"
+
+  # HTTP Listener
+  HTTPListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref NetworkLoadBalancer
+      Port: 80
+      Protocol: TCP
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref TargetGroup
+
+Outputs:
+  LoadBalancerId:
+    Description: NLB ID
+    Value: !Ref NetworkLoadBalancer
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-${UniqueStackName}-Id'
+
+  LoadBalancerArn:
+    Description: NLB ARN
+    Value: !Ref NetworkLoadBalancer
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-${UniqueStackName}-Arn'
+
+  LoadBalancerDNSName:
+    Description: NLB DNS Name
+    Value: !GetAtt NetworkLoadBalancer.DNSName
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-${UniqueStackName}-DNSName'
+
+  LoadBalancerZoneId:
+    Description: NLB Hosted Zone ID
+    Value: !GetAtt NetworkLoadBalancer.CanonicalHostedZoneID
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-${UniqueStackName}-ZoneId'
+
+  TargetGroupArn:
+    Description: Target Group ARN
+    Value: !Ref TargetGroup
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-${UniqueStackName}-TargetGroup-Arn'
+
+  ListenerHTTPArn:
+    Description: HTTP Listener ARN
+    Value: !Ref HTTPListener
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-${UniqueStackName}-ListenerHTTP-Arn'
+
+  StackName:
+    Description: "Stack Name for cross-stack references"
+    Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}"
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-${UniqueStackName}"

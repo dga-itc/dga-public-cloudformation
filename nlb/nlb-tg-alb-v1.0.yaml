@@ -1,0 +1,288 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Network Load Balancer to ALB Stack'
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "Project Information"
+        Parameters:
+          - ProjectName
+          - Environment
+          - UniqueStackName
+          - CostCenter
+      - Label:
+          default: "Service Configuration"
+        Parameters:
+          - LoadBalancerScheme
+          - LoadBalancerType
+      - Label:
+          default: "Stack Dependencies"
+        Parameters:
+          - VPCExportStack
+          - ALBExportStack
+          - EIPExportStack
+      - Label:
+          default: "Import Configuration"
+        Parameters:
+          - VPCImportMode
+          - VpcId
+          - PublicSubnetId1
+          - PublicSubnetId2
+          - NLBEIPAllocationId1
+          - NLBEIPAllocationId2
+          - ALBTargetGroupArn
+    ParameterLabels:
+      ProjectName:
+        default: "Project Name"
+      Environment:
+        default: "Environment"
+      UniqueStackName:
+        default: "Stack Unique Name"
+      CostCenter:
+        default: "Cost Center"
+      LoadBalancerScheme:
+        default: "Load Balancer Scheme"
+      VPCExportStack:
+        default: "VPC Export Stack Name"
+      ALBExportStack:
+        default: "ALB Export Stack Name"
+      EIPExportStack:
+        default: "EIP Export Stack Name"
+      VPCImportMode:
+        default: "VPC Import Mode"
+
+Parameters:
+  ProjectName:
+    Type: String
+    Description: "Project identifier"
+  
+  Environment:
+    Type: String
+    Description: "Environment identifier"
+    AllowedValues: ["dev", "sit", "uat", "pvt", "pre-prod", "prod"]
+  
+  UniqueStackName:
+    Type: String
+    Description: "Unique identifier for this stack"
+    Default: "public-nlb"
+  
+  VPCExportStack:
+    Type: String
+    Description: "VPC stack name to import from"
+    Default: "lab-iac-prod-main-vpc"
+  
+  EIPExportStack:
+    Type: String
+    Description: "EIP stack name to import from"
+    Default: "lab-iac-prod-eip-nlb"
+  
+  ALBExportStack:
+    Type: String
+    Description: "ALB stack name to import from"
+    Default: "lab-iac-prod-alb"
+  
+  VPCImportMode:
+    Type: String
+    AllowedValues: ["AUTO", "MANUAL"]
+    Default: "AUTO"
+  
+  VpcId:
+    Type: String
+    Default: ""
+  
+  PublicSubnetId1:
+    Type: String
+    Default: ""
+  
+  PublicSubnetId2:
+    Type: String
+    Default: ""
+  
+  EIPImportMode:
+    Type: String
+    AllowedValues: ["AUTO", "MANUAL"]
+    Default: "AUTO"
+  
+  NLBEIPAllocationId1:
+    Type: String
+    Default: ""
+  
+  NLBEIPAllocationId2:
+    Type: String
+    Default: ""
+
+  CostCenter:
+    Type: String
+    Description: "Cost center for billing"
+    Default: "IT"
+
+Conditions:
+  UseManualVPC: !Equals [!Ref VPCImportMode, "MANUAL"]
+  UseManualEIP: !Equals [!Ref EIPImportMode, "MANUAL"]
+
+Resources:
+  NLBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-sg"
+      GroupDescription: Security group for Network Load Balancer
+      VpcId: !If
+        - UseManualVPC
+        - !Ref VpcId
+        - !ImportValue 
+            Fn::Sub: '${VPCExportStack}-Id'
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-sg"
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: CostCenter
+          Value: !Ref CostCenter
+
+  NetworkLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: !Sub "${ProjectName}-${Environment}-${UniqueStackName}"
+      Type: network
+      Scheme: internet-facing
+      SecurityGroups:
+        - !Ref NLBSecurityGroup
+      SubnetMappings:
+        - SubnetId: !If
+            - UseManualVPC
+            - !Ref PublicSubnetId1
+            - !ImportValue 
+                Fn::Sub: '${VPCExportStack}-PublicSubnet1-Id'
+          AllocationId: !If
+            - UseManualEIP
+            - !Ref NLBEIPAllocationId1
+            - !ImportValue 
+                Fn::Sub: '${EIPExportStack}-EIP1-AllocationId'
+        - SubnetId: !If
+            - UseManualVPC
+            - !Ref PublicSubnetId2
+            - !ImportValue 
+                Fn::Sub: '${VPCExportStack}-PublicSubnet2-Id'
+          AllocationId: !If
+            - UseManualEIP
+            - !Ref NLBEIPAllocationId2
+            - !ImportValue 
+                Fn::Sub: '${EIPExportStack}-EIP2-AllocationId'
+
+  NLBTargetGroupHTTP:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    DependsOn: NetworkLoadBalancer
+    Properties:
+      Name: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-tg-http"
+      Port: 80
+      Protocol: TCP
+      TargetType: alb
+      VpcId: !If
+        - UseManualVPC
+        - !Ref VpcId
+        - !ImportValue 
+            Fn::Sub: '${VPCExportStack}-Id'
+      Targets:
+        - Id: !ImportValue 
+            Fn::Sub: '${ALBExportStack}-Arn'
+      HealthCheckEnabled: true
+      HealthCheckProtocol: HTTP
+      HealthCheckPath: /
+
+  NLBTargetGroupHTTPS:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    DependsOn: NetworkLoadBalancer
+    Properties:
+      Name: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-tg-https"
+      Port: 443
+      Protocol: TCP
+      TargetType: alb
+      VpcId: !If
+        - UseManualVPC
+        - !Ref VpcId
+        - !ImportValue 
+            Fn::Sub: '${VPCExportStack}-Id'
+      Targets:
+        - Id: !ImportValue 
+            Fn::Sub: '${ALBExportStack}-Arn'
+      HealthCheckEnabled: true
+      HealthCheckProtocol: HTTPS
+      HealthCheckPath: /
+
+  NLBListener80:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref NetworkLoadBalancer
+      Port: 80
+      Protocol: TCP
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref NLBTargetGroupHTTP
+
+  NLBListener443:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref NetworkLoadBalancer
+      Port: 443
+      Protocol: TCP
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref NLBTargetGroupHTTPS
+
+  # Update ALB Security Group to allow NLB
+  ALBSecurityGroupIngressHTTP:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !ImportValue 
+        Fn::Sub: '${ALBExportStack}-SecurityGroup-Id'
+      IpProtocol: tcp
+      FromPort: 80
+      ToPort: 80
+      SourceSecurityGroupId: !Ref NLBSecurityGroup
+
+  ALBSecurityGroupIngressHTTPS:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !ImportValue 
+        Fn::Sub: '${ALBExportStack}-SecurityGroup-Id'
+      IpProtocol: tcp
+      FromPort: 443
+      ToPort: 443
+      SourceSecurityGroupId: !Ref NLBSecurityGroup
+
+Outputs:
+  NLBArn:
+    Description: Network Load Balancer ARN
+    Value: !Ref NetworkLoadBalancer
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-${UniqueStackName}-Arn'
+
+  NLBDNSName:
+    Description: Network Load Balancer DNS Name
+    Value: !GetAtt NetworkLoadBalancer.DNSName
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-${UniqueStackName}-DNSName'
+
+  NLBZoneId:
+    Description: Network Load Balancer Hosted Zone ID
+    Value: !GetAtt NetworkLoadBalancer.CanonicalHostedZoneID
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-${UniqueStackName}-ZoneId'
+
+  StackName:
+    Description: "Stack Name for cross-stack references"
+    Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}"
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-${UniqueStackName}"

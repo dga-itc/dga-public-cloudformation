@@ -1,0 +1,58 @@
+[
+  {
+    "ParameterKey": "ProjectName",
+    "ParameterValue": "itc"
+  },
+  {
+    "ParameterKey": "Environment",
+    "ParameterValue": "sit"
+  },
+  {
+    "ParameterKey": "UniqueStackName",
+    "ParameterValue": "myvpc"
+  },
+  {
+    "ParameterKey": "VpcCidr",
+    "ParameterValue": "10.0.0.0/24"
+  },
+  {
+    "ParameterKey": "SecondaryCidr",
+    "ParameterValue": "100.64.0.0/16"
+  },
+  {
+    "ParameterKey": "PublicSubnet1Cidr",
+    "ParameterValue": "10.0.0.0/26"
+  },
+  {
+    "ParameterKey": "PublicSubnet2Cidr",
+    "ParameterValue": "10.0.0.64/26"
+  },
+  {
+    "ParameterKey": "PrivateSubnet1Cidr",
+    "ParameterValue": "10.0.0.128/26"
+  },
+  {
+    "ParameterKey": "PrivateSubnet2Cidr",
+    "ParameterValue": "10.0.0.192/26"
+  },
+  {
+    "ParameterKey": "ContainerSubnet1Cidr",
+    "ParameterValue": "100.64.0.0/19"
+  },
+  {
+    "ParameterKey": "ContainerSubnet2Cidr",
+    "ParameterValue": "100.64.32.0/19"
+  },
+  {
+    "ParameterKey": "DatabaseSubnet1Cidr",
+    "ParameterValue": "100.64.64.0/19"
+  },
+  {
+    "ParameterKey": "DatabaseSubnet2Cidr",
+    "ParameterValue": "100.64.96.0/19"
+  },
+  {
+    "ParameterKey": "DatabaseSubnet3Cidr",
+    "ParameterValue": "100.64.128.0/19"
+  }
+]

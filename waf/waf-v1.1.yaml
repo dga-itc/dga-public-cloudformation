@@ -1,0 +1,391 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'AWS WAF v2 WebACL Stack v1.1 - Separate deployment with exports'
+
+Metadata:
+  Version: "v1.1"
+  LastUpdated: "2025-01-25"
+  Purpose: "Standalone WAF WebACL for import by other stacks"
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "Project Information"
+        Parameters:
+          - ProjectName
+          - Environment
+          - UniqueStackName
+          - CostCenter
+      - Label:
+          default: "WAF Configuration"
+        Parameters:
+          - RateLimitPerIP
+          - EnableGeoBlocking
+          - BlockedCountries
+      - Label:
+          default: "Logging Configuration"
+        Parameters:
+          - LogGroupImportMode
+          - ExistingLogGroupName
+      - Label:
+          default: "Resource Policies"
+        Parameters:
+          - ResourceDeletionPolicy
+          - ResourceUpdateReplacePolicy
+    ParameterLabels:
+      ProjectName:
+        default: "Project Name"
+      Environment:
+        default: "Environment"
+      UniqueStackName:
+        default: "Stack Identifier"
+      CostCenter:
+        default: "Cost Center"
+      RateLimitPerIP:
+        default: "Rate Limit per IP"
+      EnableGeoBlocking:
+        default: "Enable Geographic Blocking"
+      BlockedCountries:
+        default: "Blocked Countries"
+      LogGroupImportMode:
+        default: "Log Group Import Mode"
+      ExistingLogGroupName:
+        default: "Existing Log Group Name"
+      ResourceDeletionPolicy:
+        default: "Resource Deletion Policy"
+      ResourceUpdateReplacePolicy:
+        default: "Resource Update Replace Policy"
+
+Parameters:
+  ProjectName:
+    Type: String
+    Description: "Project identifier (Update requires: Replacement - changes resource names)"
+  
+  Environment:
+    Type: String
+    Description: "Environment identifier (Update requires: Replacement - changes resource names)"
+    AllowedValues: ["dev", "sit", "uat", "pvt", "pre-prod", "prod"]
+  
+  UniqueStackName:
+    Type: String
+    Description: "Unique identifier for this stack (Update requires: Replacement - changes resource names)"
+    Default: "waf"
+  
+  CostCenter:
+    Type: String
+    Description: "Cost center for billing (Update requires: No interruption)"
+    Default: "IT"
+
+  # WAF Configuration
+  RateLimitPerIP:
+    Type: Number
+    Description: "Rate limit per IP (requests per 5 minutes) (Update requires: No interruption)"
+    Default: 2000
+    MinValue: 100
+    MaxValue: 20000
+
+  EnableGeoBlocking:
+    Type: String
+    Description: "Enable geographic blocking (Update requires: No interruption)"
+    Default: "false"
+    AllowedValues: ["true", "false"]
+
+  BlockedCountries:
+    Type: CommaDelimitedList
+    Description: "List of country codes to block (e.g., CN,RU,KP) (Update requires: No interruption)"
+    Default: ""
+
+  # Policy Parameters
+  ResourceDeletionPolicy:
+    Type: String
+    Description: "Resource deletion policy during stack deletion (Update requires: No interruption)"
+    AllowedValues: ["Delete", "Retain", "Snapshot"]
+    Default: "Delete"
+
+  ResourceUpdateReplacePolicy:
+    Type: String
+    Description: "Resource update replacement policy during updates (Update requires: No interruption)"
+    AllowedValues: ["Delete", "Retain", "Snapshot"]
+    Default: "Delete"
+
+  # Log Group Configuration
+  LogGroupImportMode:
+    Type: String
+    Description: "How to get CloudWatch Log Group (Update requires: Replacement - changes logging configuration)"
+    AllowedValues: ["AUTO", "MANUAL"]
+    Default: "AUTO"
+
+  ExistingLogGroupName:
+    Type: String
+    Description: "Existing Log Group name (only if LogGroupImportMode=MANUAL) (Update requires: No interruption)"
+    Default: ""
+
+Conditions:
+  ShouldEnableGeoBlocking: !Equals [!Ref EnableGeoBlocking, "true"]
+  HasBlockedCountries: !Not [!Equals [!Join ["", !Ref BlockedCountries], ""]]
+  UseManualLogGroup: !Equals [!Ref LogGroupImportMode, "MANUAL"]
+  CreateAutoLogGroup: !Equals [!Ref LogGroupImportMode, "AUTO"]
+
+Resources:
+  # IP Set for Blocked IPs (can be populated later)
+  BlockedIPSet:
+    Type: AWS::WAFv2::IPSet
+    DeletionPolicy: !Ref ResourceDeletionPolicy
+    UpdateReplacePolicy: !Ref ResourceUpdateReplacePolicy
+    Properties:
+      Name: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-blocked-ips"
+      Description: "IP addresses to block"
+      Scope: REGIONAL
+      IPAddressVersion: IPV4
+      Addresses: []  # Empty initially, can be updated later
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-blocked-ips"
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: CostCenter
+          Value: !Ref CostCenter
+
+  # IP Set for Allowed IPs (can be populated later)
+  AllowedIPSet:
+    Type: AWS::WAFv2::IPSet
+    DeletionPolicy: !Ref ResourceDeletionPolicy
+    UpdateReplacePolicy: !Ref ResourceUpdateReplacePolicy
+    Properties:
+      Name: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-allowed-ips"
+      Description: "IP addresses to always allow"
+      Scope: REGIONAL
+      IPAddressVersion: IPV4
+      Addresses: []  # Empty initially, can be updated later
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-allowed-ips"
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: CostCenter
+          Value: !Ref CostCenter
+
+  # Main WAF WebACL
+  WebACL:
+    Type: AWS::WAFv2::WebACL
+    DeletionPolicy: !Ref ResourceDeletionPolicy
+    UpdateReplacePolicy: !Ref ResourceUpdateReplacePolicy
+    Properties:
+      Name: !Sub "${ProjectName}-${Environment}-${UniqueStackName}"
+      Description: !Sub "WAF WebACL for ${ProjectName} ${Environment}"
+      Scope: REGIONAL  # For ALB, API Gateway, AppSync
+      DefaultAction:
+        Allow: {}
+      
+      Rules:
+        # Rule 1: Allow whitelisted IPs (highest priority)
+        - Name: AllowWhitelistedIPs
+          Priority: 1
+          Statement:
+            IPSetReferenceStatement:
+              Arn: !GetAtt AllowedIPSet.Arn
+          Action:
+            Allow: {}
+          VisibilityConfig:
+            SampledRequestsEnabled: true
+            CloudWatchMetricsEnabled: true
+            MetricName: AllowWhitelistedIPs
+
+        # Rule 2: Block blacklisted IPs
+        - Name: BlockBlacklistedIPs
+          Priority: 2
+          Statement:
+            IPSetReferenceStatement:
+              Arn: !GetAtt BlockedIPSet.Arn
+          Action:
+            Block: {}
+          VisibilityConfig:
+            SampledRequestsEnabled: true
+            CloudWatchMetricsEnabled: true
+            MetricName: BlockBlacklistedIPs
+
+        # Rule 3: Geographic blocking (conditional)
+        - !If
+          - ShouldEnableGeoBlocking
+          - Name: GeoBlocking
+            Priority: 3
+            Statement:
+              GeoMatchStatement:
+                CountryCodes: !If [HasBlockedCountries, !Ref BlockedCountries, ["XX"]]
+            Action:
+              Block: {}
+            VisibilityConfig:
+              SampledRequestsEnabled: true
+              CloudWatchMetricsEnabled: true
+              MetricName: GeoBlocking
+          - !Ref "AWS::NoValue"
+
+        # Rule 4: Rate limiting per IP
+        - Name: RateLimitPerIP
+          Priority: 10
+          Statement:
+            RateBasedStatement:
+              Limit: !Ref RateLimitPerIP
+              AggregateKeyType: IP
+          Action:
+            Block: {}
+          VisibilityConfig:
+            SampledRequestsEnabled: true
+            CloudWatchMetricsEnabled: true
+            MetricName: RateLimitPerIP
+
+        # Rule 5: AWS Managed Rules - Core Rule Set
+        - Name: AWSManagedRulesCommonRuleSet
+          Priority: 20
+          OverrideAction:
+            None: {}
+          Statement:
+            ManagedRuleGroupStatement:
+              VendorName: AWS
+              Name: AWSManagedRulesCommonRuleSet
+          VisibilityConfig:
+            SampledRequestsEnabled: true
+            CloudWatchMetricsEnabled: true
+            MetricName: CommonRuleSetMetric
+
+        # Rule 6: AWS Managed Rules - Known Bad Inputs
+        - Name: AWSManagedRulesKnownBadInputsRuleSet
+          Priority: 30
+          OverrideAction:
+            None: {}
+          Statement:
+            ManagedRuleGroupStatement:
+              VendorName: AWS
+              Name: AWSManagedRulesKnownBadInputsRuleSet
+          VisibilityConfig:
+            SampledRequestsEnabled: true
+            CloudWatchMetricsEnabled: true
+            MetricName: KnownBadInputsMetric
+
+        # Rule 7: AWS Managed Rules - SQL Injection
+        - Name: AWSManagedRulesSQLiRuleSet
+          Priority: 40
+          OverrideAction:
+            None: {}
+          Statement:
+            ManagedRuleGroupStatement:
+              VendorName: AWS
+              Name: AWSManagedRulesSQLiRuleSet
+          VisibilityConfig:
+            SampledRequestsEnabled: true
+            CloudWatchMetricsEnabled: true
+            MetricName: SQLiRuleSetMetric
+
+      VisibilityConfig:
+        SampledRequestsEnabled: true
+        CloudWatchMetricsEnabled: true
+        MetricName: !Sub "${ProjectName}${Environment}WAF"
+      
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}"
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: CostCenter
+          Value: !Ref CostCenter
+
+  # CloudWatch Log Group for WAF Logs (conditional)
+  WAFLogGroup:
+    Type: AWS::Logs::LogGroup
+    Condition: CreateAutoLogGroup
+    DeletionPolicy: !Ref ResourceDeletionPolicy
+    UpdateReplacePolicy: !Ref ResourceUpdateReplacePolicy
+    Properties:
+      LogGroupName: !Sub "aws-waf-logs-${ProjectName}-${Environment}-${UniqueStackName}"
+      RetentionInDays: 30
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-logs"
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: CostCenter
+          Value: !Ref CostCenter
+
+  # WAF Logging Configuration
+  WAFLoggingConfiguration:
+    Type: AWS::WAFv2::LoggingConfiguration
+    Properties:
+      ResourceArn: !GetAtt WebACL.Arn
+      LogDestinationConfigs:
+        - !If
+          - UseManualLogGroup
+          - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:${ExistingLogGroupName}"
+          - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:${WAFLogGroup}"
+      LoggingFilter:
+        DefaultBehavior: KEEP
+        Filters:
+          - Behavior: KEEP
+            Conditions:
+              - ActionCondition:
+                  Action: BLOCK
+            Requirement: MEETS_ANY
+
+Outputs:
+  # Stack Name Output (Required by CloudFormation standards)
+  StackName:
+    Description: "Stack Name for cross-stack references"
+    Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}"
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-${UniqueStackName}"
+
+  # Main exports for other stacks
+  WebACLArn:
+    Description: "WAF WebACL ARN for association with ALB/CloudFront"
+    Value: !GetAtt WebACL.Arn
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-WebACL-Arn"
+
+  WebACLId:
+    Description: "WAF WebACL ID"
+    Value: !Ref WebACL
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-WebACL-Id"
+
+  WebACLName:
+    Description: "WAF WebACL Name"
+    Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}"
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-WebACL-Name"
+
+  # IP Sets for management
+  BlockedIPSetArn:
+    Description: "Blocked IP Set ARN for management"
+    Value: !GetAtt BlockedIPSet.Arn
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-BlockedIPSet-Arn"
+
+  AllowedIPSetArn:
+    Description: "Allowed IP Set ARN for management"
+    Value: !GetAtt AllowedIPSet.Arn
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-AllowedIPSet-Arn"
+
+  # Logging
+  WAFLogGroupArn:
+    Description: "WAF CloudWatch Log Group ARN"
+    Value: !If
+      - UseManualLogGroup
+      - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:${ExistingLogGroupName}"
+      - !GetAtt WAFLogGroup.Arn
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-LogGroup-Arn"
+
+  WAFLogGroupName:
+    Description: "WAF CloudWatch Log Group Name"
+    Value: !If
+      - UseManualLogGroup
+      - !Ref ExistingLogGroupName
+      - !Ref WAFLogGroup
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-LogGroup-Name"

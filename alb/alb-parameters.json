@@ -1,0 +1,42 @@
+[
+  {
+    "ParameterKey": "ProjectName",
+    "ParameterValue": "tuxtum"
+  },
+  {
+    "ParameterKey": "Environment",
+    "ParameterValue": "uat"
+  },
+  {
+    "ParameterKey": "UniqueStackName",
+    "ParameterValue": "main-alb"
+  },
+  {
+    "ParameterKey": "VPCStackUniqueName",
+    "ParameterValue": "main-vpc"
+  },
+  {
+    "ParameterKey": "VPCImportMode",
+    "ParameterValue": "AUTO"
+  },
+  {
+    "ParameterKey": "VpcId",
+    "ParameterValue": ""
+  },
+  {
+    "ParameterKey": "PrivateSubnetId1",
+    "ParameterValue": ""
+  },
+  {
+    "ParameterKey": "PrivateSubnetId2",
+    "ParameterValue": ""
+  },
+  {
+    "ParameterKey": "CertificateArn",
+    "ParameterValue": "arn:aws:acm:ap-southeast-7:779846795588:certificate/04760e26-718d-4050-a208-504f09857f87"
+  },
+  {
+    "ParameterKey": "CostCenter",
+    "ParameterValue": "IT"
+  }
+]
