@@ -71,6 +71,7 @@ Parameters:
   ProjectName:
     Type: String
     Description: "Project identifier"
+    Default: "miniapps"
 
   Environment:
     Type: String
@@ -80,7 +81,7 @@ Parameters:
   UniqueStackName:
     Type: String
     Description: "Unique identifier for this stack"
-    Default: "ecs-service"
+    Default: "unifiedinbox-api"
 
   CostCenter:
     Type: String
@@ -105,22 +106,22 @@ Parameters:
   VPCExportStack:
     Type: String
     Description: "VPC stack name to import from"
-    Default: "lab-iac-prod-main-vpc"
+    Default: "nsf-lotto-prod-main-vpc"
 
   ECSExportStack:
     Type: String
     Description: "ECS Cluster stack name to import from"
-    Default: "lab-iac-prod-ecs-cluster"
+    Default: "nsf-lotto-pre-prod-ecs-cluster"
 
   IAMExportStack:
     Type: String
     Description: "IAM Roles stack name to import from"
-    Default: "lab-iac-prod-iam-roles"
+    Default: "nsf-lotto-prod-iam-roles"
 
   ALBExportStack:
     Type: String
     Description: "ALB stack name to import from"
-    Default: "lab-iac-prod-alb"
+    Default: "nsf-lotto-prod-alb"
 
   # ==========================================
   # Container Configuration
@@ -128,17 +129,17 @@ Parameters:
   ContainerName:
     Type: String
     Description: "Container name"
-    Default: "app"
+    Default: "nsf-lotto-"
 
   ContainerImage:
     Type: String
     Description: "Container image URI (e.g., nginx:alpine for testing)"
-    Default: "nginx:alpine"
+    Default: "chiib01/base-image-express:latest"
 
   ContainerPort:
     Type: Number
     Description: "Container port (1-65535)"
-    Default: 80
+    Default: 3000
     MinValue: 1
     MaxValue: 65535
 
@@ -168,6 +169,36 @@ Parameters:
     Type: CommaDelimitedList
     Description: "Environment variables in KEY=VALUE format (e.g., NODE_ENV=production,DEBUG=false)"
     Default: ""
+
+  EnvVar1Name:
+    Type: String
+    Description: "Environment variable 1 name (leave empty to skip)"
+    Default: "SERVICE_NAME"
+
+  EnvVar1Value:
+    Type: String
+    Description: "Environment variable 1 value"
+    Default: "nsf-lotto-api-preprod"
+
+  EnvVar2Name:
+    Type: String
+    Description: "Environment variable 2 name (leave empty to skip)"
+    Default: "PORT"
+
+  EnvVar2Value:
+    Type: String
+    Description: "Environment variable 2 value"
+    Default: "3000"
+
+  EnvVar3Name:
+    Type: String
+    Description: "Environment variable 3 name (leave empty to skip)"
+    Default: "PATH_PATTERN"
+
+  EnvVar3Value:
+    Type: String
+    Description: "Environment variable 3 value"
+    Default: "/cp/nsf/lotto/api/*"
 
   # ==========================================
   # Health Check Configuration
@@ -220,7 +251,7 @@ Parameters:
   DomainName:
     Type: String
     Description: "Domain name for listener rule (use * for all)"
-    Default: "*"
+    Default: "unified-inbox-dev.superapps-th.cloud"
 
   PathPattern:
     Type: String
@@ -251,6 +282,13 @@ Parameters:
 
 Conditions:
   HasEnvironmentVariables: !Not [!Equals [!Join ["", !Ref EnvironmentVariables], ""]]
+  HasEnvVar1: !Not [!Equals [!Ref EnvVar1Name, ""]]
+  HasEnvVar2: !Not [!Equals [!Ref EnvVar2Name, ""]]
+  HasEnvVar3: !Not [!Equals [!Ref EnvVar3Name, ""]]
+  HasAnyEnvVar: !Or
+    - !Not [!Equals [!Ref EnvVar1Name, ""]]
+    - !Not [!Equals [!Ref EnvVar2Name, ""]]
+    - !Not [!Equals [!Ref EnvVar3Name, ""]]
   HasDomainName: !Not [!Equals [!Ref DomainName, "*"]]
   IsCircuitBreakerEnabled: !Equals [!Ref EnableCircuitBreaker, "true"]
 
@@ -270,7 +308,7 @@ Resources:
   SecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupName: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-sg"
+      GroupName: !Sub "${ProjectName}-${UniqueStackName}-${Environment}-sg"
       GroupDescription: !Sub "Security group for ${ContainerName} ECS service"
       VpcId: !ImportValue
         Fn::Sub: '${VPCExportStack}-Id'
@@ -294,7 +332,7 @@ Resources:
           Description: "HTTP outbound"
       Tags:
         - Key: Name
-          Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-sg"
+          Value: !Sub "${ProjectName}-${UniqueStackName}-${Environment}-sg"
         - Key: Project
           Value: !Ref ProjectName
         - Key: Environment
@@ -310,11 +348,11 @@ Resources:
   LogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
-      LogGroupName: !Sub "/ecs/${ProjectName}-${Environment}-${UniqueStackName}-${ContainerName}"
+      LogGroupName: !Sub "/ecs/${ProjectName}-${UniqueStackName}-${Environment}"
       RetentionInDays: !Ref LogRetentionDays
       Tags:
         - Key: Name
-          Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-logs"
+          Value: !Sub "${ProjectName}-${UniqueStackName}-${Environment}-logs"
         - Key: Project
           Value: !Ref ProjectName
         - Key: Environment
@@ -328,7 +366,7 @@ Resources:
   TaskDefinition:
     Type: AWS::ECS::TaskDefinition
     Properties:
-      Family: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-${ContainerName}"
+      Family: !Sub "${ProjectName}-${UniqueStackName}-${Environment}"
       NetworkMode: awsvpc
       RequiresCompatibilities:
         - FARGATE
@@ -345,12 +383,22 @@ Resources:
             - ContainerPort: !Ref ContainerPort
               Protocol: tcp
           Environment: !If
-            - HasEnvironmentVariables
-            - !Split
-              - ","
-              - !Join
-                - ","
-                - !Ref EnvironmentVariables
+            - HasAnyEnvVar
+            - - !If
+                - HasEnvVar1
+                - Name: !Ref EnvVar1Name
+                  Value: !Ref EnvVar1Value
+                - !Ref "AWS::NoValue"
+              - !If
+                - HasEnvVar2
+                - Name: !Ref EnvVar2Name
+                  Value: !Ref EnvVar2Value
+                - !Ref "AWS::NoValue"
+              - !If
+                - HasEnvVar3
+                - Name: !Ref EnvVar3Name
+                  Value: !Ref EnvVar3Value
+                - !Ref "AWS::NoValue"
             - !Ref "AWS::NoValue"
           LogConfiguration:
             LogDriver: awslogs
@@ -360,7 +408,7 @@ Resources:
               awslogs-stream-prefix: ecs
       Tags:
         - Key: Name
-          Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-task-def"
+          Value: !Sub "${ProjectName}-${UniqueStackName}-${Environment}-task-def"
         - Key: Project
           Value: !Ref ProjectName
         - Key: Environment
@@ -374,7 +422,7 @@ Resources:
   TargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
-      Name: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-tg"
+      Name: !Sub "${ProjectName}-${UniqueStackName}-${Environment}-tg"
       Port: !Ref ContainerPort
       Protocol: HTTP
       VpcId: !ImportValue
@@ -396,7 +444,7 @@ Resources:
           Value: "false"
       Tags:
         - Key: Name
-          Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-tg"
+          Value: !Sub "${ProjectName}-${UniqueStackName}-${Environment}-tg"
         - Key: Project
           Value: !Ref ProjectName
         - Key: Environment
@@ -438,7 +486,7 @@ Resources:
     Type: AWS::ECS::Service
     DependsOn: ListenerRule
     Properties:
-      ServiceName: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-${ContainerName}"
+      ServiceName: !Sub "${ProjectName}-${UniqueStackName}-${Environment}"
       Cluster: !ImportValue
         Fn::Sub: '${ECSExportStack}-Id'
       TaskDefinition: !Ref TaskDefinition
@@ -468,7 +516,7 @@ Resources:
       EnableExecuteCommand: true
       Tags:
         - Key: Name
-          Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}-service"
+          Value: !Sub "${ProjectName}-${UniqueStackName}-${Environment}-service"
         - Key: Project
           Value: !Ref ProjectName
         - Key: Environment
@@ -481,35 +529,35 @@ Outputs:
     Description: ECS Service Name
     Value: !GetAtt Service.Name
     Export:
-      Name: !Sub '${ProjectName}-${Environment}-${UniqueStackName}-Service-Name'
+      Name: !Sub '${ProjectName}-${UniqueStackName}-${Environment}-Service-Name'
 
   ServiceArn:
     Description: ECS Service ARN
     Value: !Ref Service
     Export:
-      Name: !Sub '${ProjectName}-${Environment}-${UniqueStackName}-Service-Arn'
+      Name: !Sub '${ProjectName}-${UniqueStackName}-${Environment}-Service-Arn'
 
   TargetGroupArn:
     Description: Target Group ARN
     Value: !Ref TargetGroup
     Export:
-      Name: !Sub '${ProjectName}-${Environment}-${UniqueStackName}-TargetGroup-Arn'
+      Name: !Sub '${ProjectName}-${UniqueStackName}-${Environment}-TargetGroup-Arn'
 
   SecurityGroupId:
     Description: Security Group ID
     Value: !Ref SecurityGroup
     Export:
-      Name: !Sub '${ProjectName}-${Environment}-${UniqueStackName}-SecurityGroup-Id'
+      Name: !Sub '${ProjectName}-${UniqueStackName}-${Environment}-SecurityGroup-Id'
 
   LogGroupName:
     Description: CloudWatch Log Group Name
     Value: !Ref LogGroup
     Export:
-      Name: !Sub '${ProjectName}-${Environment}-${UniqueStackName}-LogGroup-Name'
+      Name: !Sub '${ProjectName}-${UniqueStackName}-${Environment}-LogGroup-Name'
 
   StackName:
     Description: "Stack Name for cross-stack references"
-    Value: !Sub "${ProjectName}-${Environment}-${UniqueStackName}"
+    Value: !Sub "${ProjectName}-${UniqueStackName}-${Environment}"
     Export:
       Name: !Sub
         - "${ProjectName}${EnvShort}-${UniqueStackName}"
